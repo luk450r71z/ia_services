@@ -1,4 +1,5 @@
 from uuid import UUID
+from datetime import datetime
 import logging
 
 # Configure logging
@@ -51,18 +52,30 @@ def authenticate_user(username: str, password: str):
     return True
 
 
-def create_session(session_id: UUID, service_id: UUID, client_id: str, resource_uri: str):
+def create_session(session_id: UUID, service_id: UUID, client_id: str, resource_uri: str, data: dict = None):
     """Create a new service session"""
     session = {
         "id_session": session_id,
         "id_service": service_id,
         "resource_uri": resource_uri,
-        "client_id": client_id
+        "client_id": client_id,
+        "data": data or {},
+        "created_at": datetime.utcnow(),
+        "status": "active"
     }
     SESSIONS[str(session_id)] = session
+    logger.info(f"Created new session: {session}")
     return session
 
 
 def get_session(session_id: UUID):
     """Get a session by ID"""
-    return SESSIONS.get(str(session_id)) 
+    return SESSIONS.get(str(session_id))
+
+
+def update_session_data(session_id: UUID, data: dict):
+    """Update session data"""
+    if str(session_id) in SESSIONS:
+        SESSIONS[str(session_id)]["data"].update(data)
+        return SESSIONS[str(session_id)]
+    return None 
