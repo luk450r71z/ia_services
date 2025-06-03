@@ -44,6 +44,9 @@ class ServiceSession(BaseModel):
     id_service: UUID
     resource_uri: str
     client_id: str
+    data: Dict[str, Any]
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str = "active"
 
 
 class TokenData(BaseModel):
