@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from auth.router import auth_router, services_router
-# from conversational_agent import router as ws_router
+from conversational_agent.router import router as chat_router
 
 app = FastAPI(
     title="IA Services API",
@@ -21,7 +21,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(services_router, prefix="/services", tags=["Services"])
-# app.include_router(ws_router.router, prefix="/chat", tags=["Conversational Agent"])
+app.include_router(chat_router, prefix="/conversational_agent", tags=["Conversational Agent"])
 
 @app.get("/")
 async def root():
