@@ -2,5 +2,5 @@ fastapi==0.103.1
 uvicorn==0.23.2
 pyjwt==2.8.0
 python-dotenv==1.0.0
-uuid==1.30
-python-multipart
+python-multipart==0.0.9
+websockets==12.0 
