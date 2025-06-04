@@ -1,30 +1,24 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
-from typing import Dict, Any, Optional
+from typing import Dict
 import json
-import uuid
 from datetime import datetime
 import logging
 import asyncio
-
-# IMPORTAR TU AGENTE
 from .agents.simple_agent import SimpleRRHHAgent
-
-from .models.schemas import WebSocketMessage, ChatSession
 from .utils.connection_manager import ConnectionManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+chat_router = APIRouter()
 
-# Diccionario para sesiones activas (en producción usar Redis o DB)
-active_sessions: Dict[str, ChatSession] = {}
+# Solo mantener agentes activos en memoria
 active_agents: Dict[str, SimpleRRHHAgent] = {}
 
 # Instancia global del manager mejorado
 manager = ConnectionManager()
 
-@router.websocket("/ws/{session_id}")
+@chat_router.websocket("/ws/{session_id}")
 async def chat_websocket(websocket: WebSocket, session_id: str):
     """
     WebSocket simplificado integrado con SimpleRRHHAgent
@@ -35,14 +29,6 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     await manager.connect(websocket, session_id)
     
     try:
-        # Crear sesión si no existe
-        if session_id not in active_sessions:
-            active_sessions[session_id] = ChatSession(
-                session_id=session_id,
-                created_at=datetime.now()
-            )
-            logger.info(f"🆕 Nueva sesión creada: {session_id}")
-        
         # Crear agente si no existe
         if session_id not in active_agents:
             logger.info(f"🤖 Creando nuevo agente para sesión {session_id}")
@@ -196,14 +182,11 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
     finally:
         # Limpieza final
         manager.disconnect(session_id)
-        if session_id in active_sessions:
-            del active_sessions[session_id]
-            logger.info(f"🧹 Sesión limpiada: {session_id}")
         if session_id in active_agents:
             del active_agents[session_id]
             logger.info(f"🤖 Agente limpiado: {session_id}")
 
-@router.get("/sessions/active")
+@chat_router.get("/sessions/active")
 async def get_active_sessions():
     """Endpoint para obtener información de sesiones activas"""
     try:
@@ -229,11 +212,10 @@ async def get_active_sessions():
         logger.error(f"❌ Error obteniendo sesiones activas: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-@router.delete("/sessions/{session_id}")
+@chat_router.delete("/sessions/{session_id}")
 async def close_session(session_id: str):
     """Endpoint para cerrar una sesión específica"""
     try:
-        closed_session = False
         closed_agent = False
         closed_connection = False
         
@@ -243,12 +225,6 @@ async def close_session(session_id: str):
             closed_connection = True
             logger.info(f"🔌 Conexión WebSocket cerrada: {session_id}")
         
-        # Cerrar sesión en memoria
-        if session_id in active_sessions:
-            del active_sessions[session_id]
-            closed_session = True
-            logger.info(f"🗑️ Sesión cerrada manualmente: {session_id}")
-        
         # Cerrar agente
         if session_id in active_agents:
             del active_agents[session_id]
@@ -257,7 +233,6 @@ async def close_session(session_id: str):
         
         return {
             "message": f"Sesión {session_id} cerrada exitosamente",
-            "closed_session": closed_session,
             "closed_agent": closed_agent,
             "closed_connection": closed_connection,
             "db_updated": True
@@ -266,7 +241,7 @@ async def close_session(session_id: str):
         logger.error(f"❌ Error cerrando sesión {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-@router.post("/sessions/{session_id}/reset")
+@chat_router.post("/sessions/{session_id}/reset")
 async def reset_session(session_id: str):
     """Endpoint para reiniciar una sesión específica"""
     try:
@@ -280,7 +255,7 @@ async def reset_session(session_id: str):
         logger.error(f"❌ Error reiniciando sesión {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-@router.post("/sessions/{session_id}/start")
+@chat_router.post("/sessions/{session_id}/start")
 async def start_conversation_with_questions(session_id: str, request_data: dict):
     """
     Endpoint para iniciar una conversación con preguntas personalizadas
@@ -295,14 +270,6 @@ async def start_conversation_with_questions(session_id: str, request_data: dict)
         
         if not isinstance(questions, list):
             raise HTTPException(status_code=400, detail="Las preguntas deben ser una lista")
-        
-        # Crear sesión si no existe
-        if session_id not in active_sessions:
-            active_sessions[session_id] = ChatSession(
-                session_id=session_id,
-                created_at=datetime.now()
-            )
-            logger.info(f"🆕 Nueva sesión creada via POST: {session_id}")
         
         # Crear agente con preguntas personalizadas
         if session_id not in active_agents:
@@ -340,12 +307,11 @@ async def start_conversation_with_questions(session_id: str, request_data: dict)
         logger.error(f"❌ Error iniciando conversación {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-@router.get("/health")
+@chat_router.get("/health")
 async def health_check():
     """Endpoint de verificación de salud del servicio"""
     return {
         "status": "healthy",
-        "active_sessions": len(active_sessions),
         "active_agents": len(active_agents),
         "active_connections": len(manager.active_connections),
         "timestamp": datetime.now().isoformat()
