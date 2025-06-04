@@ -10,6 +10,7 @@ import asyncio
 from .agents.simple_agent import SimpleRRHHAgent
 
 from .models.schemas import WebSocketMessage, ChatSession
+from .models.connection_manager import ConnectionManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -20,51 +21,7 @@ router = APIRouter()
 active_sessions: Dict[str, ChatSession] = {}
 active_agents: Dict[str, SimpleRRHHAgent] = {}
 
-class ConnectionManager:
-    """Maneja las conexiones WebSocket de forma avanzada"""
-    
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, session_id: str):
-        """Acepta una nueva conexión WebSocket"""
-        try:
-            await websocket.accept()
-            self.active_connections[session_id] = websocket
-            logger.info(f"✅ WebSocket conectado exitosamente: {session_id}")
-        except Exception as e:
-            logger.error(f"❌ Error al conectar WebSocket {session_id}: {str(e)}")
-            raise
-
-    def disconnect(self, session_id: str):
-        """Desconecta una sesión WebSocket"""
-        if session_id in self.active_connections:
-            del self.active_connections[session_id]
-            logger.info(f"🔌 WebSocket desconectado: {session_id}")
-
-    async def send_message(self, session_id: str, message: Dict[str, Any]):
-        """Envía un mensaje a través del WebSocket"""
-        if session_id in self.active_connections:
-            try:
-                await self.active_connections[session_id].send_text(json.dumps(message))
-                logger.debug(f"📤 Mensaje enviado a {session_id}: {message.get('type', 'unknown')}")
-            except Exception as e:
-                logger.error(f"❌ Error enviando mensaje a {session_id}: {str(e)}")
-                # Si hay error enviando, desconectar la sesión
-                self.disconnect(session_id)
-        else:
-            logger.warning(f"⚠️ Intento de enviar mensaje a sesión inexistente: {session_id}")
-
-    async def send_typing_indicator(self, session_id: str, is_typing: bool = True):
-        """Envía indicador de que el agente está escribiendo"""
-        await self.send_message(session_id, {
-            "type": "typing_indicator",
-            "is_typing": is_typing,
-            "session_id": session_id,
-            "timestamp": datetime.now().isoformat()
-        })
-
-# Instancia global del manager
+# Instancia global del manager mejorado
 manager = ConnectionManager()
 
 @router.websocket("/ws/{session_id}")
@@ -250,17 +207,22 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
 async def get_active_sessions():
     """Endpoint para obtener información de sesiones activas"""
     try:
+        # Obtener sesiones activas desde la base de datos
+        db_sessions = manager.get_active_sessions_from_db()
+        
         return {
-            "active_sessions": len(active_sessions),
+            "active_sessions": len(db_sessions),
             "active_agents": len(active_agents),
+            "active_connections": len(manager.active_connections),
             "sessions": [
                 {
-                    "session_id": session.session_id,
-                    "created_at": session.created_at.isoformat(),
-                    "is_active": session.is_active,
-                    "has_agent": session.session_id in active_agents
+                    "session_id": session[0],
+                    "created_at": session[1],
+                    "status": session[2],
+                    "has_agent": session[0] in active_agents,
+                    "has_connection": session[0] in manager.active_connections
                 }
-                for session in active_sessions.values()
+                for session in db_sessions
             ]
         }
     except Exception as e:
@@ -273,30 +235,33 @@ async def close_session(session_id: str):
     try:
         closed_session = False
         closed_agent = False
+        closed_connection = False
         
-        if session_id in active_sessions:
+        # Cerrar conexión WebSocket
+        if session_id in manager.active_connections:
             manager.disconnect(session_id)
+            closed_connection = True
+            logger.info(f"🔌 Conexión WebSocket cerrada: {session_id}")
+        
+        # Cerrar sesión en memoria
+        if session_id in active_sessions:
             del active_sessions[session_id]
             closed_session = True
             logger.info(f"🗑️ Sesión cerrada manualmente: {session_id}")
         
+        # Cerrar agente
         if session_id in active_agents:
             del active_agents[session_id]
             closed_agent = True
             logger.info(f"🤖 Agente cerrado manualmente: {session_id}")
         
-        if closed_session or closed_agent:
-            return {
-                "message": f"Sesión {session_id} cerrada exitosamente",
-                "closed_session": closed_session,
-                "closed_agent": closed_agent
-            }
-        else:
-            return {
-                "message": f"Sesión {session_id} no encontrada",
-                "closed_session": False,
-                "closed_agent": False
-            }
+        return {
+            "message": f"Sesión {session_id} cerrada exitosamente",
+            "closed_session": closed_session,
+            "closed_agent": closed_agent,
+            "closed_connection": closed_connection,
+            "db_updated": True
+        }
     except Exception as e:
         logger.error(f"❌ Error cerrando sesión {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
@@ -382,5 +347,6 @@ async def health_check():
         "status": "healthy",
         "active_sessions": len(active_sessions),
         "active_agents": len(active_agents),
+        "active_connections": len(manager.active_connections),
         "timestamp": datetime.now().isoformat()
     } 
