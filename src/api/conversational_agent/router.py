@@ -10,7 +10,7 @@ import asyncio
 from .agents.simple_agent import SimpleRRHHAgent
 
 from .models.schemas import WebSocketMessage, ChatSession
-from .models.connection_manager import ConnectionManager
+from .utils.connection_manager import ConnectionManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
