@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import TestPage from './pages/Test.vue'
+import TestPage from '../pages/test.vue'
 
 export default {
   name: 'App',

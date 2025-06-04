@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
 
-# Solo mantener agentes activos en memoria
+# Solo mantener agentes activos en memoria (estado conversacional complejo)
 active_agents: Dict[str, SimpleRRHHAgent] = {}
 
 # Instancia global del manager mejorado
@@ -21,35 +21,62 @@ manager = ConnectionManager()
 @chat_router.websocket("/ws/{session_id}")
 async def chat_websocket(websocket: WebSocket, session_id: str):
     """
-    WebSocket simplificado integrado con SimpleRRHHAgent
+    WebSocket simplificado que requiere inicialización previa
     
     Parámetros:
-    - session_id: ID único de la sesión
+    - session_id: ID único de la sesión (debe estar inicializado previamente)
     """
+    logger.info(f"🔌 Intento de conexión WebSocket para sesión: {session_id}")
+    
+    # VALIDACIÓN: La sesión debe estar inicializada
+    session_exists = manager.session_exists(session_id)
+    logger.info(f"🔍 Verificando sesión {session_id} - Existe: {session_exists}")
+    
+    if not session_exists:
+        logger.warning(f"❌ Sesión {session_id} no encontrada en base de datos")
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "content": "Sesión no inicializada. Llama primero al endpoint /sessions/{session_id}/start",
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat(),
+            "error_code": "SESSION_NOT_INITIALIZED"
+        }))
+        await websocket.close()
+        return
+    
+    logger.info(f"✅ Sesión {session_id} verificada, procediendo a conectar WebSocket")
     await manager.connect(websocket, session_id)
     
     try:
-        # Crear agente si no existe
+        # Crear agente si no existe en memoria
         if session_id not in active_agents:
-            logger.info(f"🤖 Creando nuevo agente para sesión {session_id}")
-            active_agents[session_id] = SimpleRRHHAgent()
+            logger.info(f"🤖 Recreando agente para sesión existente {session_id}")
             
-            # Enviar mensaje de bienvenida
+            # Recuperar las preguntas almacenadas en la base de datos
+            stored_questions = manager.get_session_questions(session_id)
+            logger.info(f"📋 Preguntas recuperadas: {len(stored_questions)} preguntas")
+            
+            active_agents[session_id] = SimpleRRHHAgent(questions=stored_questions)
+            
+            # Inicializar con estado base
             welcome_message = active_agents[session_id].start_conversation()
             await manager.send_message(session_id, {
                 "type": "agent_response",
                 "content": welcome_message,
                 "session_id": session_id,
                 "timestamp": datetime.now().isoformat(),
-                "is_complete": False
+                "is_complete": False,
+                "reconnected": True
             })
+            logger.info(f"📤 Agente recreado y mensaje enviado para sesión: {session_id}")
         else:
-            # AGENTE YA EXISTE - Enviar mensaje de bienvenida almacenado
+            # AGENTE YA EXISTE EN MEMORIA - Enviar estado actual
             logger.info(f"🔄 Reconectando a agente existente: {session_id}")
             agent = active_agents[session_id]
             
             if agent.initialized:
-                # Recuperar mensaje de bienvenida almacenado
+                # Recuperar mensaje de bienvenida o estado actual
                 welcome_message = agent.state.metadata.get("welcome_message", "¡Hola! Continuemos con la conversación.")
                 
                 # Si hay una pregunta actual pendiente, agregarla
@@ -64,7 +91,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                     "is_complete": agent.is_conversation_complete(),
                     "reconnected": True
                 })
-                logger.info(f"📤 Mensaje de bienvenida reenviado para sesión: {session_id}")
+                logger.info(f"📤 Estado actual reenviado para sesión: {session_id}")
             else:
                 # Si el agente no está inicializado, inicializarlo ahora
                 welcome_message = agent.start_conversation()
@@ -80,6 +107,7 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 })
                 logger.info(f"📤 Agente inicializado tardíamente para sesión: {session_id}")
         
+        # LOOP PRINCIPAL DE CONVERSACIÓN
         while True:
             try:
                 # Recibir mensaje del usuario con timeout
@@ -119,8 +147,24 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
                 # Simular tiempo de procesamiento
                 await asyncio.sleep(0.5)
                 
+                # Guardar estado anterior para detectar respuestas nuevas
+                previous_responses = dict(agent.state.user_responses)
+                
                 agent_response = agent.process_user_input(user_input)
                 is_complete = agent.is_conversation_complete()
+                
+                # DETECTAR SI SE ACEPTÓ UNA NUEVA RESPUESTA Y GUARDAR EN BD
+                current_responses = agent.state.user_responses
+                new_responses = {q: r for q, r in current_responses.items() if q not in previous_responses}
+                
+                if new_responses:
+                    # Se aceptó una nueva respuesta, guardar en base de datos
+                    for question, response in new_responses.items():
+                        try:
+                            manager.save_user_response(session_id, question, response)
+                            logger.info(f"💾 Respuesta guardada en BD: {session_id} - {question[:50]}...")
+                        except Exception as e:
+                            logger.error(f"❌ Error guardando respuesta en BD: {str(e)}")
                 
                 # Quitar indicador de escritura
                 await manager.send_typing_indicator(session_id, False)
@@ -186,133 +230,82 @@ async def chat_websocket(websocket: WebSocket, session_id: str):
             del active_agents[session_id]
             logger.info(f"🤖 Agente limpiado: {session_id}")
 
-@chat_router.get("/sessions/active")
-async def get_active_sessions():
-    """Endpoint para obtener información de sesiones activas"""
-    try:
-        # Obtener sesiones activas desde la base de datos
-        db_sessions = manager.get_active_sessions_from_db()
-        
-        return {
-            "active_sessions": len(db_sessions),
-            "active_agents": len(active_agents),
-            "active_connections": len(manager.active_connections),
-            "sessions": [
-                {
-                    "session_id": session[0],
-                    "created_at": session[1],
-                    "status": session[2],
-                    "has_agent": session[0] in active_agents,
-                    "has_connection": session[0] in manager.active_connections
-                }
-                for session in db_sessions
-            ]
-        }
-    except Exception as e:
-        logger.error(f"❌ Error obteniendo sesiones activas: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-
-@chat_router.delete("/sessions/{session_id}")
-async def close_session(session_id: str):
-    """Endpoint para cerrar una sesión específica"""
-    try:
-        closed_agent = False
-        closed_connection = False
-        
-        # Cerrar conexión WebSocket
-        if session_id in manager.active_connections:
-            manager.disconnect(session_id)
-            closed_connection = True
-            logger.info(f"🔌 Conexión WebSocket cerrada: {session_id}")
-        
-        # Cerrar agente
-        if session_id in active_agents:
-            del active_agents[session_id]
-            closed_agent = True
-            logger.info(f"🤖 Agente cerrado manualmente: {session_id}")
-        
-        return {
-            "message": f"Sesión {session_id} cerrada exitosamente",
-            "closed_agent": closed_agent,
-            "closed_connection": closed_connection,
-            "db_updated": True
-        }
-    except Exception as e:
-        logger.error(f"❌ Error cerrando sesión {session_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-
-@chat_router.post("/sessions/{session_id}/reset")
-async def reset_session(session_id: str):
-    """Endpoint para reiniciar una sesión específica"""
-    try:
-        if session_id in active_agents:
-            active_agents[session_id].reset_conversation()
-            logger.info(f"🔄 Sesión reiniciada: {session_id}")
-            return {"message": f"Sesión {session_id} reiniciada exitosamente"}
-        else:
-            return {"message": f"Sesión {session_id} no encontrada"}
-    except Exception as e:
-        logger.error(f"❌ Error reiniciando sesión {session_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-
 @chat_router.post("/sessions/{session_id}/start")
 async def start_conversation_with_questions(session_id: str, request_data: dict):
     """
-    Endpoint para iniciar una conversación con preguntas personalizadas
+    Inicializa una nueva sesión de conversación con preguntas específicas
     
-    Body JSON:
+    Body esperado:
     {
-        "questions": ["¿Cuál es tu experiencia?", "¿Por qué quieres trabajar aquí?"]
+        "questions": ["¿pregunta1?", "¿pregunta2?", ...]
     }
     """
     try:
+        logger.info(f"🚀 Iniciando POST /sessions/{session_id}/start")
+        
+        # Validar que existan preguntas
         questions = request_data.get("questions", [])
+        if not questions or not isinstance(questions, list):
+            raise HTTPException(status_code=400, detail="Se requiere una lista de 'questions' no vacía")
         
-        if not isinstance(questions, list):
-            raise HTTPException(status_code=400, detail="Las preguntas deben ser una lista")
+        logger.info(f"📝 Preguntas recibidas: {len(questions)} preguntas")
         
-        # Crear agente con preguntas personalizadas
+        # Registrar la sesión en base de datos
+        logger.info(f"💾 Guardando sesión {session_id} en base de datos...")
+        try:
+            manager._update_session_status(session_id, 'active')
+            manager.save_session_questions(session_id, questions)
+        except Exception as db_error:
+            logger.error(f"❌ ERROR EN BASE DE DATOS: {str(db_error)}")
+            raise HTTPException(status_code=500, detail=f"Error al guardar sesión en base de datos: {str(db_error)}")
+        
+        # Verificar que se guardó correctamente
+        session_exists = manager.session_exists(session_id)
+        logger.info(f"✅ Verificación inmediata - Sesión existe: {session_exists}")
+        
+        if not session_exists:
+            logger.error(f"❌ PROBLEMA: La sesión {session_id} no se guardó correctamente")
+            raise HTTPException(status_code=500, detail="Error al guardar la sesión")
+        
+        # Crear agente en memoria con las preguntas proporcionadas
         if session_id not in active_agents:
-            active_agents[session_id] = SimpleRRHHAgent(questions=questions if questions else None)
-            logger.info(f"🤖 Agente creado con {len(questions)} preguntas personalizadas")
+            active_agents[session_id] = SimpleRRHHAgent(questions=questions)
             
-            # Iniciar conversación y almacenar mensaje de bienvenida
-            welcome_message = active_agents[session_id].start_conversation()
-            
-            # Almacenar mensaje de bienvenida en metadatos para fácil acceso
-            active_agents[session_id].state.metadata["welcome_message"] = welcome_message
-            
-            return {
-                "message": "Conversación iniciada exitosamente",
-                "session_id": session_id,
-                "welcome_message": welcome_message,
-                "questions_count": len(questions),
-                "has_custom_questions": len(questions) > 0,
-                "agent_initialized": active_agents[session_id].initialized
-            }
-        else:
-            # Agente ya existe, obtener estado actual
-            agent = active_agents[session_id]
-            welcome_message = agent.state.metadata.get("welcome_message", "Agente ya inicializado")
-            
-            return {
-                "message": f"La sesión {session_id} ya existe",
-                "session_id": session_id,
-                "welcome_message": welcome_message,
-                "agent_initialized": agent.initialized,
-                "current_question": agent.state.current_question if agent.initialized else None
-            }
-            
+        agent = active_agents[session_id]
+        
+        # Las preguntas ya están configuradas en el constructor
+        
+        logger.info(f"✅ Sesión {session_id} inicializada con {len(questions)} preguntas")
+        
+        return {
+            "message": f"Sesión {session_id} inicializada correctamente",
+            "session_id": session_id,
+            "questions_count": len(questions),
+            "status": "ready",
+            "next_step": f"Conectar al WebSocket: /ws/{session_id}"
+        }
+        
     except Exception as e:
-        logger.error(f"❌ Error iniciando conversación {session_id}: {str(e)}")
+        logger.error(f"❌ Error al inicializar sesión {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @chat_router.get("/health")
 async def health_check():
-    """Endpoint de verificación de salud del servicio"""
-    return {
-        "status": "healthy",
-        "active_agents": len(active_agents),
-        "active_connections": len(manager.active_connections),
-        "timestamp": datetime.now().isoformat()
-    } 
+    """Endpoint de salud del servicio"""
+    try:
+        # Obtener información básica
+        all_sessions = manager.get_all_sessions_from_db()
+        active_sessions = [s for s in all_sessions if s['status'] == 'active']
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "database": "connected",
+            "total_sessions": len(all_sessions),
+            "active_sessions": len(active_sessions),
+            "active_agents_in_memory": len(active_agents),
+            "active_websocket_connections": len(manager.active_connections)
+        }
+    except Exception as e:
+        logger.error(f"❌ Error en health check: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}") 
