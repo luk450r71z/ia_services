@@ -5,17 +5,40 @@ from uuid import UUID, uuid4
 import logging
 from pathlib import Path
 import os
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get the root directory of the project
-ROOT_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parent.parent.parent.parent
+# Método 1: Directorio actual
+CWD = Path(os.getcwd())
+logger.info(f"Current working directory: {CWD}")
 
-# Database configuration - Store in envs/data directory
-DATA_DIR = ROOT_DIR / "envs" / "data"
+# Método 2: Ruta absoluta explícita
+try:
+    # Ruta explícita a envs/data
+    BASE_PATH = Path(os.path.dirname(os.path.abspath(__file__)))
+    ROOT_PATH = BASE_PATH
+    
+    # Navegar hacia arriba hasta encontrar el directorio raíz
+    while ROOT_PATH.name != 'ia_services' and ROOT_PATH.parent != ROOT_PATH:
+        ROOT_PATH = ROOT_PATH.parent
+        
+    logger.info(f"Root path: {ROOT_PATH}")
+    
+    # Directorio de datos
+    DATA_DIR = ROOT_PATH / "envs" / "data"
+except Exception as e:
+    logger.error(f"Error finding root path: {e}")
+    # Fallback a la ubicación relativa
+    DATA_DIR = CWD.parent.parent.parent.parent / "envs" / "data"
+
+# Asegurar que el directorio exista
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+logger.info(f"Data directory: {DATA_DIR}")
+
+# Ruta a la base de datos
 DATABASE_PATH = DATA_DIR / "session.db"
 logger.info(f"Database path: {DATABASE_PATH.absolute()}")
 
