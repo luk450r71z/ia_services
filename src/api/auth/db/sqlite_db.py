@@ -1,19 +1,23 @@
 import sqlite3
 import json
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 import logging
 from pathlib import Path
+import os
 
 # Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Ensure the data directory exists in envs
-DATA_DIR = Path("envs/data")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+# Get the root directory of the project
+ROOT_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parent.parent.parent.parent
 
-# Database configuration
-DATABASE_PATH = DATA_DIR / "sessions.db"
+# Database configuration - Store in envs/data directory
+DATA_DIR = ROOT_DIR / "envs" / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATABASE_PATH = DATA_DIR / "session.db"
+logger.info(f"Database path: {DATABASE_PATH.absolute()}")
 
 def dict_factory(cursor, row):
     """Convert database row to dictionary"""
@@ -22,127 +26,112 @@ def dict_factory(cursor, row):
 
 def get_db():
     """Get database connection with row factory"""
-    conn = sqlite3.connect(str(DATABASE_PATH))
-    conn.row_factory = dict_factory
-    return conn
+    try:
+        conn = sqlite3.connect(str(DATABASE_PATH))
+        conn.row_factory = dict_factory
+        return conn
+    except sqlite3.Error as e:
+        logger.error(f"Error connecting to database: {e}")
+        raise
 
 def init_db():
     """Initialize database tables"""
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Create sessions table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        id_session TEXT PRIMARY KEY,
-        id_service TEXT NOT NULL,
-        client_id TEXT NOT NULL,
-        resource_uri TEXT NOT NULL,
-        data JSON,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        status TEXT DEFAULT 'active'
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-    logger.info("Database initialized successfully")
-
-def create_session_db(session_id: UUID, service_id: UUID, client_id: str, resource_uri: str, data: dict = None):
-    """Create a new session in SQLite database"""
-    conn = get_db()
-    cursor = conn.cursor()
-
+    logger.info(f"Initializing database at {DATABASE_PATH}")
     try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Create sessions table with simplified structure
         cursor.execute("""
-        INSERT INTO sessions (id_session, id_service, client_id, resource_uri, data, created_at, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        CREATE TABLE IF NOT EXISTS sessions (
+            id_session TEXT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'active'
+        )
+        """)
+
+        conn.commit()
+        conn.close()
+        logger.info("Session database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        raise
+
+def create_session_db():
+    """Create a new session in SQLite database"""
+    logger.info("Creating new session in database")
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        session_id = str(uuid4())
+        
+        logger.info(f"Inserting session with ID: {session_id}")
+        cursor.execute("""
+        INSERT INTO sessions (id_session, created_at, status)
+        VALUES (?, ?, ?)
         """, (
-            str(session_id),
-            str(service_id),
-            client_id,
-            resource_uri,
-            json.dumps(data or {}),
+            session_id,
             datetime.utcnow().isoformat(),
             'active'
         ))
         conn.commit()
 
         # Fetch the created session
-        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (str(session_id),))
+        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
         session = cursor.fetchone()
         
         if session:
-            session['data'] = json.loads(session['data'])
-            session['id_session'] = UUID(session['id_session'])
-            session['id_service'] = UUID(session['id_service'])
             session['created_at'] = datetime.fromisoformat(session['created_at'])
-
-        logger.info(f"Created new session in database: {session}")
-        return session
+            logger.info(f"Created new session in database: {session}")
+            return session
+        else:
+            logger.error("Session was inserted but could not be retrieved")
+            return None
 
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error creating session: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error creating session: {e}")
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
-def get_session_db(session_id: UUID):
+def get_session_db(session_id: str):
     """Get a session from SQLite database"""
-    conn = get_db()
-    cursor = conn.cursor()
-
+    logger.info(f"Getting session with ID: {session_id}")
+    conn = None
     try:
-        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (str(session_id),))
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
         session = cursor.fetchone()
 
         if session:
-            session['data'] = json.loads(session['data'])
-            session['id_session'] = UUID(session['id_session'])
-            session['id_service'] = UUID(session['id_service'])
             session['created_at'] = datetime.fromisoformat(session['created_at'])
+            logger.info(f"Found session: {session}")
+        else:
+            logger.warning(f"Session not found with ID: {session_id}")
 
         return session
 
     except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
+        logger.error(f"Database error getting session: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error getting session: {e}")
         raise
     finally:
-        conn.close()
-
-def update_session_data_db(session_id: UUID, data: dict):
-    """Update session data in SQLite database"""
-    conn = get_db()
-    cursor = conn.cursor()
-
-    try:
-        # Get current data
-        cursor.execute("SELECT data FROM sessions WHERE id_session = ?", (str(session_id),))
-        current = cursor.fetchone()
-        
-        if current:
-            current_data = json.loads(current['data'])
-            current_data.update(data)
-            
-            # Update the session
-            cursor.execute("""
-            UPDATE sessions 
-            SET data = ?
-            WHERE id_session = ?
-            """, (json.dumps(current_data), str(session_id)))
-            
-            conn.commit()
-            
-            # Return updated session
-            return get_session_db(session_id)
-            
-        return None
-
-    except sqlite3.Error as e:
-        logger.error(f"Database error: {e}")
-        raise
-    finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 # Initialize database when module is imported
 init_db() 

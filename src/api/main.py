@@ -1,7 +1,11 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth.router import auth_router, services_router
-from conversational_agent.router import router as chat_router
+from auth.router import auth_router
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="IA Services API",
@@ -18,10 +22,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-app.include_router(services_router, prefix="/services", tags=["Services"])
-app.include_router(chat_router, prefix="/conversational_agent", tags=["Conversational Agent"])
+# Include auth router
+logger.info("Registering auth router at /api prefix")
+app.include_router(auth_router, prefix="/api", tags=["Authentication"])
+#app.include_router(chat_router, prefix="/conversational_agent", tags=["Conversational Agent"])
 
 @app.get("/")
 async def root():
@@ -29,10 +33,11 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+    logger.info("Starting API server")
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=8000,
         reload=True,
-        reload_dirs=["auth", "conversational_agent"]
+        reload_dirs=["auth"]
     )
