@@ -2,6 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from auth.router import auth_router
+from conversational_agent.router import chat_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +26,7 @@ app.add_middleware(
 # Include auth router
 logger.info("Registering auth router at /api prefix")
 app.include_router(auth_router, prefix="/api", tags=["Authentication"])
-#app.include_router(chat_router, prefix="/conversational_agent", tags=["Conversational Agent"])
+app.include_router(chat_router, prefix="/api/chat", tags=["Conversational Agent"])
 
 @app.get("/")
 async def root():

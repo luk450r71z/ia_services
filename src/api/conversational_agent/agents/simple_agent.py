@@ -57,8 +57,12 @@ class SimpleRRHHAgent:
             questions = self.questions
         else:
             # Cargar preguntas por defecto desde archivo
-            questions = search_questions_file_direct("data/questions.json", None)
+            #questions = search_questions_file_direct("data/questions.json", None)
+            print("❌ No hay preguntas configuradas para esta sesión")
+            return "Error: No se han configurado preguntas para esta entrevista. Por favor, contacta al administrador."
         
+
+
         self.state.pending_questions = questions
         self.state.current_question_index = 0
         
@@ -118,7 +122,7 @@ Empecemos:"""
             else:
                 response_file = "data/user_responses.json"
             
-            save_user_responses_direct(self.state.user_responses, response_file)
+            #save_user_responses_direct(self.state.user_responses, response_file)
             self.state.needs_clarification = False
             self.state.clarification_reason = None
             print(f"✅ Respuesta aceptada para: {self.state.current_question}")

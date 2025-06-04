@@ -51,6 +51,14 @@
       authToken: {
         type: String,
         default: null
+      },
+      sessionId: {
+        type: String,
+        default: 'default-session'
+      },
+      questions: {
+        type: Array,
+        required: true
       }
     },
     data() {
@@ -59,16 +67,59 @@
         isConnected: false,
         userInput: '',
         messages: [],
-        sessionId: null
+        API_BASE_URL: 'http://127.0.0.1:8000'
       }
     },
-    mounted() {
-      this.connectWebSocket();
+    async mounted() {
+      console.log(`🚀 ChatWidget montado con sessionId: ${this.sessionId}`);
+      const initialized = await this.initializeAgent();
+      if (initialized) {
+        // Pequeño delay para asegurar que el servidor procese la inicialización
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        this.connectWebSocket();
+      } else {
+        this.addMessage('system', 'No se pudo inicializar la conversación. Por favor, recarga la página.');
+      }
     },
     beforeUnmount() {
       this.disconnectWebSocket();
     },
     methods: {
+      async initializeAgent() {
+        try {
+          console.log(`🔧 Inicializando agente para sesión: ${this.sessionId}`);
+          console.log(`📝 Preguntas a enviar:`, this.questions);
+          console.log(`🌐 URL del endpoint: ${this.API_BASE_URL}/api/chat/sessions/${this.sessionId}/start`);
+          
+          const requestBody = { questions: this.questions };
+          console.log(`📤 Request body:`, JSON.stringify(requestBody));
+          
+          const response = await fetch(`${this.API_BASE_URL}/api/chat/sessions/${this.sessionId}/start`, {
+            method: 'POST',
+            headers: {
+              'accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+          });
+          
+          console.log(`📨 Response status: ${response.status}`);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.log(`❌ Error response: ${errorText}`);
+            throw new Error(`Error al inicializar agente: ${response.status} - ${errorText}`);
+          }
+          
+          const data = await response.json();
+          console.log('✅ Agente inicializado correctamente:', data);
+          return true;
+        } catch (error) {
+          console.error('❌ Error inicializando agente:', error);
+          this.addMessage('system', `Error al inicializar conversación: ${error.message}`);
+          return false;
+        }
+      },
       connectWebSocket() {
         try {
           console.log('🔗 Conectando a WebSocket:', this.websocketUrl);
@@ -97,10 +148,6 @@
             } else if (data.type === 'error') {
                 console.error('❌ Error del servidor:', data.content);
                 this.addMessage('system', `Error: ${data.content}`);
-            }
-            
-            if (data.session_id) {
-                this.sessionId = data.session_id;
             }
           }.bind(this);
           

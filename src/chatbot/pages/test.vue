@@ -27,6 +27,8 @@
       <ChatWidget 
         :websocket-url="websocketUrl"
         :auth-token="authToken"
+        :session-id="id_session"
+        :questions="PREGUNTAS_PERSONALIZADAS"
         @message-sent="onMessageSent"
         @conversation-complete="onConversationComplete"
       />
@@ -35,7 +37,7 @@
 </template>
 
 <script setup>
-import ChatWidget from '../components/ChatWidget.vue'
+import ChatWidget from '../components/chatwidget.vue'
 import { ref } from 'vue'
 
 // Estados reactivos
@@ -64,7 +66,7 @@ const PREGUNTAS_PERSONALIZADAS = [
 
 // Generar un ID de sesión único para testing
 const id_session = 'aedcd2e4-0c44-4d2d-95f0-bec8dd505b79'
-const websocketUrl = 'ws://localhost:8000/conversational_agent/ws/' + id_session
+const websocketUrl = 'ws://localhost:8000/api/chat/ws/' + id_session
 
 // Función principal para iniciar conversación
 const iniciarConversacion = async () => {
@@ -72,26 +74,20 @@ const iniciarConversacion = async () => {
   errorMessage.value = ''
   
   try {
-    // Paso 1: Obtener token
-    console.log('Obteniendo token de autenticación...')
     const token = await obtenerToken()
     
     if (!token) {
       throw new Error('No se pudo obtener el token de autenticación')
     }
     
-    // Paso 2: Inicializar sesión del agente conversacional con preguntas personalizadas
-    console.log('Inicializando agente conversacional con preguntas personalizadas...')
-    await inicializarAgenteConPreguntas()
-    
-    // Todo exitoso
+    // Pasar el token y session_id al ChatWidget
     authToken.value = token
     isAuthenticated.value = true
-    console.log('✅ Conversación iniciada correctamente')
+    console.log('✅ Token obtenido correctamente')
     
   } catch (error) {
-    console.error('Error al iniciar conversación:', error)
-    errorMessage.value = error.message || 'Error al iniciar la conversación'
+    console.error('Error al obtener token:', error)
+    errorMessage.value = error.message || 'Error al obtener token'
   } finally {
     isInitializing.value = false
   }
@@ -99,13 +95,15 @@ const iniciarConversacion = async () => {
 
 // Función para obtener el token
 const obtenerToken = async () => {
-  const response = await fetch(`${API_BASE_URL}/auth/session/token`, {
+  // Codificar credenciales en Base64 para HTTP Basic Auth
+  const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`)
+  
+  const response = await fetch(`${API_BASE_URL}/api/chat/session/auth`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(SERVICE_CONFIG)
+      'Authorization': `Basic ${credentials}`
+    }
   })
   
   if (!response.ok) {
@@ -113,27 +111,7 @@ const obtenerToken = async () => {
   }
   
   const data = await response.json()
-  return data.access_token || data.token
-}
-
-// Función para inicializar la sesión del agente conversacional con preguntas personalizadas
-const inicializarAgenteConPreguntas = async () => {
-  const response = await fetch(`${API_BASE_URL}/conversational_agent/sessions/${id_session}/start`, {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ questions: PREGUNTAS_PERSONALIZADAS })
-  })
-  
-  if (!response.ok) {
-    throw new Error(`Error al inicializar agente conversacional: ${response.status} ${response.statusText}`)
-  }
-  
-  const data = await response.json()
-  console.log('Agente conversacional inicializado:', data)
-  return data
+  return data.id_session // Según el esquema SessionResponse
 }
 
 // Funciones para manejar eventos del ChatWidget
