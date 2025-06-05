@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from secrets import compare_digest
 
-from auth.db.database import USERS
-from auth.db.sqlite_db import create_session_db, get_session_db
-from auth.models.schemas import SessionResponse
+from src.api.auth.db.database import USERS
+from src.api.auth.db.sqlite_db import create_session_db, get_session_db
+from src.api.auth.models.schemas import SessionResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: src/api/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../envs/data:/app/envs/data
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - ia_services_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  tests:
+    build:
+      context: ..
+      dockerfile: tests/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ../envs/data:/app/envs/data
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - ia_services_network
+
+networks:
+  ia_services_network:
+    driver: bridge

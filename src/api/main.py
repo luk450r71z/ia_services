@@ -1,8 +1,8 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth.router import auth_router
-from conversational_agent.router import chat_router
+from src.api.auth.router import auth_router
+from src.api.conversational_agent.router import chat_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
