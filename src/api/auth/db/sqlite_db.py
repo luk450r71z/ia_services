@@ -77,6 +77,18 @@ def init_db():
         )
         """)
 
+        # Verificar si la tabla conversation_response existe
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_response (
+            id_session TEXT,
+            id_question INTEGER,
+            question TEXT,
+            response TEXT,
+            datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (id_session) REFERENCES sessions(id_session)
+        )
+        """)
+
         conn.commit()
         conn.close()
         logger.info("Base de datos verificada exitosamente")
@@ -238,6 +250,91 @@ def update_session_db(session_id: str, type_value: str, state: str, metadata: di
         logger.error(f"Error inesperado al actualizar sesión: {e}")
         if conn:
             conn.rollback()
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+def save_conversation_response(session_id: str, id_question: int, question: str, response: str):
+    """
+    Guarda una respuesta de conversación en la base de datos
+    
+    Args:
+        session_id: ID de la sesión
+        id_question: Número de la pregunta (opcional, puede ser None)
+        question: Texto de la pregunta
+        response: Texto de la respuesta del usuario
+    
+    Returns:
+        bool: True si se guardó exitosamente, False en caso contrario
+    """
+    logger.info(f"Guardando respuesta de conversación para sesión: {session_id}")
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        timestamp = datetime.utcnow().isoformat()
+        
+        cursor.execute("""
+        INSERT INTO conversation_response (id_session, id_question, question, response, datetime)
+        VALUES (?, ?, ?, ?, ?)
+        """, (session_id, id_question, question, response, timestamp))
+        
+        conn.commit()
+        logger.info(f"Respuesta guardada exitosamente para sesión {session_id}, pregunta {id_question}")
+        return True
+
+    except sqlite3.Error as e:
+        logger.error(f"Error de base de datos al guardar respuesta: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    except Exception as e:
+        logger.error(f"Error inesperado al guardar respuesta: {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def get_conversation_responses(session_id: str):
+    """
+    Obtiene todas las respuestas de conversación para una sesión
+    
+    Args:
+        session_id: ID de la sesión
+    
+    Returns:
+        list: Lista de diccionarios con las respuestas de la conversación
+    """
+    logger.info(f"Obteniendo respuestas de conversación para sesión: {session_id}")
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT * FROM conversation_response 
+        WHERE id_session = ? 
+        ORDER BY datetime ASC
+        """, (session_id,))
+        
+        responses = cursor.fetchall()
+        
+        # Convertir timestamps a datetime
+        for response in responses:
+            response['datetime'] = datetime.fromisoformat(response['datetime'])
+        
+        logger.info(f"Se encontraron {len(responses)} respuestas para la sesión {session_id}")
+        return responses
+
+    except sqlite3.Error as e:
+        logger.error(f"Error de base de datos al obtener respuestas: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado al obtener respuestas: {e}")
         raise
     finally:
         if conn:

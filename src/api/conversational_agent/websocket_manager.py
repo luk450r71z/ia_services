@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 
 from .agents.simple_agent import SimpleRRHHAgent
-from auth.db.sqlite_db import get_session_db, update_session_db
+from auth.db.sqlite_db import get_session_db, update_session_db, save_conversation_response
 from .models.schemas import WebSocketMessage
 
 logger = logging.getLogger(__name__)
@@ -91,9 +91,31 @@ class WebSocketManager:
                 await self.send_message(session_id, "error", "No se pudo inicializar el agente conversacional")
                 return
             
-            # Procesar mensaje con el agente
+            # Guardar información antes de procesar (para capturar pregunta actual)
             agent = self.active_agents[session_id]
+            current_question = agent.state.current_question
+            current_question_index = agent.state.current_question_index
+            
+            # Procesar mensaje con el agente
             agent_response = agent.process_user_input(message)
+            
+            # Solo guardar si había una pregunta activa y la respuesta fue aceptada
+            # (es decir, si no necesita clarificación)
+            if current_question and not agent.state.needs_clarification:
+                # Guardar la respuesta en la base de datos
+                try:
+                    success = save_conversation_response(
+                        session_id=session_id,
+                        id_question=current_question_index,
+                        question=current_question,
+                        response=message
+                    )
+                    if success:
+                        logger.info(f"💾 Respuesta guardada en BD para sesión {session_id}, pregunta {current_question_index}")
+                    else:
+                        logger.warning(f"⚠️ No se pudo guardar respuesta en BD para sesión {session_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error guardando respuesta en BD: {str(e)}")
             
             # Verificar si la conversación se completó
             is_complete = agent.is_conversation_complete()

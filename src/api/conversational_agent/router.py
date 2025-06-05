@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import logging
 
 # Importar funciones de la base de datos de auth
-from auth.db.sqlite_db import get_session_db, update_session_db
+from auth.db.sqlite_db import get_session_db, update_session_db, get_conversation_responses
 
 # Importar WebSocket manager
 from .websocket_manager import websocket_manager
@@ -222,6 +222,52 @@ def _route_agent_by_type(service_type: str, metadata: Dict[str, Any]) -> Dict[st
     
     return agent_config
 
+@chat_router.get("/session/{session_id}/conversations")
+async def get_session_conversations(session_id: str):
+    """
+    Obtiene todas las respuestas de conversación para una sesión específica.
+    
+    Args:
+        session_id: ID de la sesión
+    
+    Returns:
+        Lista de conversaciones guardadas
+    """
+    try:
+        logger.info(f"Obteniendo conversaciones para sesión: {session_id}")
+        
+        # Verificar que la sesión existe
+        session_data = get_session_db(session_id)
+        if not session_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sesión no encontrada"
+            )
+        
+        # Obtener las conversaciones
+        conversations = get_conversation_responses(session_id)
+        
+        return {
+            "session_id": session_id,
+            "total_responses": len(conversations),
+            "conversations": conversations,
+            "session_info": {
+                "type": session_data.get("type"),
+                "state": session_data.get("state"),
+                "created_at": session_data.get("created_at"),
+                "updated_at": session_data.get("updated_at")
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error obteniendo conversaciones para sesión {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {str(e)}"
+        )
+
 @chat_router.get("/health")
 async def health_check():
     """Endpoint de salud del servicio conversacional"""
@@ -231,7 +277,9 @@ async def health_check():
             "service": "conversational_agent",
             "timestamp": datetime.now().isoformat(),
             "endpoints": [
-                "/api/chat/service/start"
+                "/api/chat/service/start",
+                "/api/chat/session/{session_id}/conversations",
+                "/api/chat/ws/{session_id}"
             ]
         }
     except Exception as e:
