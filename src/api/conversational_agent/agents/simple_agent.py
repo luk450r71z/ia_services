@@ -101,6 +101,11 @@ Empecemos:"""
         if not self.initialized:
             return self.start_conversation()
         
+        # Verificar si la conversación ya está completa
+        if self.state.conversation_complete:
+            print("⚠️ Mensaje rechazado: la conversación ya está completa")
+            return "La entrevista ya ha finalizado. ¡Gracias por tu participación!"
+        
         # Agregar mensaje del usuario al estado
         user_message = HumanMessage(content=user_input)
         self.state.messages.append(user_message)

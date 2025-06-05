@@ -17,6 +17,12 @@
       <div v-if="errorMessage" class="error-message">
         {{ errorMessage }}
       </div>
+      
+      <div v-if="conversationCompleted" class="completion-message">
+        ✅ Conversación completada exitosamente. El chat se ha cerrado.
+        <br>
+        <small>Puedes iniciar una nueva conversación presionando el botón.</small>
+      </div>
     </div>
     
     <!-- Sección de Chat Widget (solo se muestra cuando está autenticado) -->
@@ -25,10 +31,8 @@
         ✅ Sesión iniciada correctamente
       </div>
       <ChatWidget 
-        :websocket-url="websocketUrl"
         :auth-token="authToken"
         :session-id="id_session"
-        :questions="PREGUNTAS_PERSONALIZADAS"
         @message-sent="onMessageSent"
         @conversation-complete="onConversationComplete"
       />
@@ -45,6 +49,7 @@ const isAuthenticated = ref(false)
 const isInitializing = ref(false)
 const authToken = ref(null)
 const errorMessage = ref('')
+const conversationCompleted = ref(false)
 
 // Configuración de la API
 const API_BASE_URL = 'http://127.0.0.1:8000'
@@ -64,36 +69,43 @@ const PREGUNTAS_PERSONALIZADAS = [
   "¿Tienes alguna pregunta para nosotros?"
 ]
 
-// Generar un ID de sesión único para testing
-const id_session = 'aedcd2e4-0c44-4d2d-95f0-bec8dd505b79'
-const websocketUrl = 'ws://localhost:8000/api/chat/ws/' + id_session
+// ID de sesión se generará dinámicamente en la autenticación
+const id_session = ref('') // Se llenará después de la autenticación
 
 // Función principal para iniciar conversación
 const iniciarConversacion = async () => {
   isInitializing.value = true
   errorMessage.value = ''
+  conversationCompleted.value = false
   
   try {
-    const token = await obtenerToken()
+    // Paso 1: Obtener token y crear sesión
+    console.log('🔐 Paso 1: Autenticación...')
+    const sessionId = await obtenerToken()
     
-    if (!token) {
+    if (!sessionId) {
       throw new Error('No se pudo obtener el token de autenticación')
     }
     
-    // Pasar el token y session_id al ChatWidget
-    authToken.value = token
+    // Paso 2: Inicializar servicio con preguntas
+    console.log('🔧 Paso 2: Inicializando servicio con preguntas...')
+    await inicializarServicio(sessionId)
+    
+    // Todo listo para el ChatWidget
+    authToken.value = sessionId
+    id_session.value = sessionId
     isAuthenticated.value = true
-    console.log('✅ Token obtenido correctamente')
+    console.log('✅ Servicio inicializado correctamente. ChatWidget puede iniciar.')
     
   } catch (error) {
-    console.error('Error al obtener token:', error)
-    errorMessage.value = error.message || 'Error al obtener token'
+    console.error('❌ Error en inicialización:', error)
+    errorMessage.value = error.message || 'Error en la inicialización'
   } finally {
     isInitializing.value = false
   }
 }
 
-// Función para obtener el token
+// Función para obtener el token (Paso 1)
 const obtenerToken = async () => {
   // Codificar credenciales en Base64 para HTTP Basic Auth
   const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`)
@@ -107,11 +119,40 @@ const obtenerToken = async () => {
   })
   
   if (!response.ok) {
-    throw new Error(`Error al obtener token: ${response.status} ${response.statusText}`)
+    const errorText = await response.text()
+    throw new Error(`Error al obtener token: ${response.status} - ${errorText}`)
   }
   
   const data = await response.json()
-  return data.id_session // Según el esquema SessionResponse
+  console.log('✅ Sesión creada:', data.id_session)
+  return data.id_session
+}
+
+// Función para inicializar servicio con preguntas (Paso 2)
+const inicializarServicio = async (sessionId) => {
+  const response = await fetch(`${API_BASE_URL}/api/chat/service/initiate`, {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      id_session: sessionId,
+      type: 'questionary',
+      metadata: {
+        questions: PREGUNTAS_PERSONALIZADAS
+      }
+    })
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Error al inicializar servicio: ${response.status} - ${errorText}`)
+  }
+  
+  const data = await response.json()
+  console.log('✅ Servicio inicializado:', data)
+  return data
 }
 
 // Funciones para manejar eventos del ChatWidget
@@ -121,6 +162,17 @@ const onMessageSent = (message) => {
 
 const onConversationComplete = (progress) => {
   console.log('Conversación completada:', progress)
+  
+  // Cerrar el ChatWidget y no aceptar más respuestas
+  isAuthenticated.value = false
+  
+  // Resetear el estado para permitir una nueva conversación si es necesario
+  authToken.value = null
+  id_session.value = ''
+  
+  // Mostrar mensaje de que la conversación ha terminado
+  errorMessage.value = ''
+  conversationCompleted.value = true
 }
 </script>
 
@@ -178,6 +230,16 @@ const onConversationComplete = (progress) => {
   border-radius: 4px;
   padding: 12px;
   margin-bottom: 1rem;
+}
+
+.completion-message {
+  color: #0c5460;
+  background-color: #d1ecf1;
+  border: 1px solid #bee5eb;
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 1rem;
+  font-weight: bold;
 }
 </style>
   

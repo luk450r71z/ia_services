@@ -17,21 +17,25 @@
         <textarea 
           id="user-input" 
           v-model="userInput"
-          @keydown.enter.prevent="sendMessage"
-          placeholder="Escribe tu respuesta..."
-          :disabled="!isConnected"
+          @keydown.enter.prevent="handleEnterKey"
+          :placeholder="conversationCompleted ? 'La conversación ha finalizado' : 'Escribe tu respuesta...'"
+          :disabled="!isConnected || conversationCompleted"
         ></textarea>
         <button 
-          @click="sendMessage" 
-          :disabled="!isConnected || !userInput.trim()"
+          @click="handleButtonClick" 
+          :disabled="!isConnected || !userInput.trim() || conversationCompleted"
           class="send-button"
         >
-          {{ isConnected ? 'Enviar' : 'Conectando...' }}
+          {{ conversationCompleted ? 'Finalizado' : (isConnected ? 'Enviar' : 'Conectando...') }}
         </button>
       </div>
       
       <div v-if="!isConnected" class="connection-status">
         Conectando al servidor...
+      </div>
+      
+      <div v-if="conversationCompleted" class="completion-status">
+        ✅ Conversación completada. El chat se cerrará automáticamente.
       </div>
     </div>
   </template>
@@ -44,10 +48,7 @@
         type: String,
         default: null
       },
-      websocketUrl: {
-        type: String,
-        default: 'ws://localhost:8000/conversational_agent/ws/default-session'
-      },
+
       authToken: {
         type: String,
         default: null
@@ -56,10 +57,7 @@
         type: String,
         default: 'default-session'
       },
-      questions: {
-        type: Array,
-        required: true
-      }
+
     },
     data() {
       return {
@@ -67,40 +65,43 @@
         isConnected: false,
         userInput: '',
         messages: [],
-        API_BASE_URL: 'http://127.0.0.1:8000'
+        websocketUrl: '', // Se determinará dinámicamente desde el metadata
+        API_BASE_URL: 'http://127.0.0.1:8000',
+        conversationCompleted: false // Flag para controlar si la conversación terminó
       }
     },
     async mounted() {
       console.log(`🚀 ChatWidget montado con sessionId: ${this.sessionId}`);
-      const initialized = await this.initializeAgent();
-      if (initialized) {
-        // Pequeño delay para asegurar que el servidor procese la inicialización
+      console.log('📝 Sesión ya debería estar inicializada por test.vue');
+      
+      const started = await this.startConversationalService();
+      if (started) {
+        // Pequeño delay para asegurar que el servidor procese el inicio
         await new Promise(resolve => setTimeout(resolve, 1000));
         this.connectWebSocket();
       } else {
-        this.addMessage('system', 'No se pudo inicializar la conversación. Por favor, recarga la página.');
+        this.addMessage('system', 'No se pudo iniciar el servicio conversacional. Por favor, recarga la página.');
       }
     },
     beforeUnmount() {
       this.disconnectWebSocket();
     },
     methods: {
-      async initializeAgent() {
+      async startConversationalService() {
         try {
-          console.log(`🔧 Inicializando agente para sesión: ${this.sessionId}`);
-          console.log(`📝 Preguntas a enviar:`, this.questions);
-          console.log(`🌐 URL del endpoint: ${this.API_BASE_URL}/api/chat/sessions/${this.sessionId}/start`);
+          console.log(`🚀 Iniciando servicio conversacional para sesión: ${this.sessionId}`);
+          console.log('ℹ️ Las preguntas ya están guardadas en la BD por test.vue, el agente las obtendrá automáticamente');
           
-          const requestBody = { questions: this.questions };
-          console.log(`📤 Request body:`, JSON.stringify(requestBody));
-          
-          const response = await fetch(`${this.API_BASE_URL}/api/chat/sessions/${this.sessionId}/start`, {
+          const response = await fetch(`${this.API_BASE_URL}/api/chat/service/start`, {
             method: 'POST',
             headers: {
               'accept': 'application/json',
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify({
+              id_session: this.sessionId,
+              type: 'questionary'
+            })
           });
           
           console.log(`📨 Response status: ${response.status}`);
@@ -108,15 +109,22 @@
           if (!response.ok) {
             const errorText = await response.text();
             console.log(`❌ Error response: ${errorText}`);
-            throw new Error(`Error al inicializar agente: ${response.status} - ${errorText}`);
+            throw new Error(`Error al iniciar servicio: ${response.status} - ${errorText}`);
           }
           
           const data = await response.json();
-          console.log('✅ Agente inicializado correctamente:', data);
+          console.log('✅ Servicio conversacional iniciado correctamente:', data);
+          
+          // Actualizar la URL del WebSocket con el endpoint correcto
+          if (data.metadata && data.metadata.websocket_endpoint) {
+            this.websocketUrl = `ws://localhost:8000${data.metadata.websocket_endpoint}`;
+            console.log(`🔗 WebSocket URL actualizada: ${this.websocketUrl}`);
+          }
+          
           return true;
         } catch (error) {
-          console.error('❌ Error inicializando agente:', error);
-          this.addMessage('system', `Error al inicializar conversación: ${error.message}`);
+          console.error('❌ Error iniciando servicio:', error);
+          this.addMessage('system', `Error al iniciar servicio conversacional: ${error.message}`);
           return false;
         }
       },
@@ -138,10 +146,18 @@
             
             // Manejar diferentes tipos de mensajes
             if (data.type === 'agent_response') {
+                const isComplete = data.data && data.data.is_complete;
+                console.log('🔍 Verificando is_complete:', isComplete, 'data.data:', data.data, 'Estado actual conversationCompleted:', this.conversationCompleted);
+                
                 this.addMessage('agent', data.content);
                 
-                if (data.is_complete) {
-                    this.$emit('conversation-complete', data.summary);
+                if (isComplete) {
+                    // Marcar la conversación como completada INMEDIATAMENTE
+                    this.conversationCompleted = true;
+                    console.log('🔒 Conversación marcada como completada. Mensajes bloqueados. Estado:', this.conversationCompleted);
+                    
+                    // Emitir evento para que el componente padre maneje el cierre
+                    this.$emit('conversation-complete', data.data.summary);
                 }
             } else if (data.type === 'typing_indicator') {
                 console.log('⏱️ Agente escribiendo:', data.is_typing);
@@ -190,7 +206,19 @@
       sendMessage() {
         const message = this.userInput.trim();
         
+        console.log('🚀 sendMessage() llamado. Mensaje:', message, 'conversationCompleted:', this.conversationCompleted, 'isConnected:', this.isConnected);
+        
+        // Verificar si la conversación ya está completada
+        if (this.conversationCompleted) {
+          console.log('⚠️ Intento de envío bloqueado: conversación completada');
+          this.addMessage('system', 'La conversación ha finalizado. No se pueden enviar más mensajes.');
+          this.userInput = ''; // Limpiar el input
+          return;
+        }
+        
         if (message && this.isConnected) {
+          console.log('✅ Enviando mensaje al servidor:', message);
+          
           // Agregar mensaje del usuario
           this.addMessage('user', message);
           
@@ -204,6 +232,26 @@
           
           // Emitir evento de mensaje enviado
           this.$emit('message-sent', message);
+        } else {
+          console.log('❌ No se puede enviar mensaje. message:', !!message, 'isConnected:', this.isConnected);
+        }
+      },
+      
+      handleEnterKey() {
+        console.log('⌨️ Enter presionado. conversationCompleted:', this.conversationCompleted);
+        if (!this.conversationCompleted) {
+          this.sendMessage();
+        } else {
+          console.log('⚠️ Enter bloqueado: conversación completada');
+        }
+      },
+      
+      handleButtonClick() {
+        console.log('🖱️ Botón presionado. conversationCompleted:', this.conversationCompleted);
+        if (!this.conversationCompleted) {
+          this.sendMessage();
+        } else {
+          console.log('⚠️ Botón bloqueado: conversación completada');
         }
       },
       
@@ -342,6 +390,17 @@
     border-radius: 4px;
     margin-top: 10px;
     color: #856404;
+  }
+  
+  .completion-status {
+    text-align: center;
+    padding: 10px;
+    background-color: #d1ecf1;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    margin-top: 10px;
+    color: #0c5460;
+    font-weight: bold;
   }
   
   /* Scrollbar personalizada */

@@ -39,7 +39,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 logger.info(f"Data directory: {DATA_DIR}")
 
 # Ruta a la base de datos
-DATABASE_PATH = DATA_DIR / "session.db"
+DATABASE_PATH = DATA_DIR / "sessions.db"
 logger.info(f"Database path: {DATABASE_PATH.absolute()}")
 
 def dict_factory(cursor, row):
@@ -58,68 +58,88 @@ def get_db():
         raise
 
 def init_db():
-    """Initialize database tables"""
-    logger.info(f"Initializing database at {DATABASE_PATH}")
+    """Initialize database tables - Usa el esquema existente"""
+    logger.info(f"Verificando base de datos en {DATABASE_PATH}")
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        # Create sessions table with simplified structure
+        # Verificar si la tabla sessions existe con el esquema correcto
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             id_session TEXT PRIMARY KEY,
+            type TEXT CHECK(type IN ('questionary', 'help_desk')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'active'
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            state TEXT CHECK(state IN ('new', 'initiated', 'started', 'complete', 'expired')),
+            status BOOLEAN DEFAULT 1,
+            metadata JSON DEFAULT '{}'
         )
         """)
 
         conn.commit()
         conn.close()
-        logger.info("Session database initialized successfully")
+        logger.info("Base de datos verificada exitosamente")
     except Exception as e:
-        logger.error(f"Error initializing database: {e}")
+        logger.error(f"Error al verificar base de datos: {e}")
         raise
 
 def create_session_db():
-    """Create a new session in SQLite database"""
-    logger.info("Creating new session in database")
+    """Create a new session in SQLite database usando el esquema completo"""
+    logger.info("Creando nueva sesión en base de datos")
     conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
 
         session_id = str(uuid4())
+        created_at = datetime.utcnow().isoformat()
         
-        logger.info(f"Inserting session with ID: {session_id}")
+        logger.info(f"Insertando sesión con ID: {session_id}")
         cursor.execute("""
-        INSERT INTO sessions (id_session, created_at, status)
-        VALUES (?, ?, ?)
+        INSERT INTO sessions (id_session, type, created_at, updated_at, state, status, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             session_id,
-            datetime.utcnow().isoformat(),
-            'active'
+            None,  # type por defecto
+            created_at,
+            created_at,  # updated_at igual a created_at inicialmente
+            'new',  # state por defecto
+            1,  # status por defecto (boolean como integer)
+            '{}'  # metadata por defecto como JSON vacío
         ))
         conn.commit()
 
-        # Fetch the created session
+        # Obtener la sesión creada
         cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
         session = cursor.fetchone()
         
         if session:
+            # Convertir los timestamps a datetime para consistencia
             session['created_at'] = datetime.fromisoformat(session['created_at'])
-            logger.info(f"Created new session in database: {session}")
+            session['updated_at'] = datetime.fromisoformat(session['updated_at'])
+            # Convertir metadata de JSON string a dict
+            try:
+                if session['metadata'] and session['metadata'] != '{}':
+                    session['metadata'] = json.loads(session['metadata'])
+                else:
+                    session['metadata'] = None
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error parseando metadata JSON para sesión nueva: {e}")
+                session['metadata'] = None
+            logger.info(f"Sesión creada en base de datos: {session}")
             return session
         else:
-            logger.error("Session was inserted but could not be retrieved")
+            logger.error("La sesión fue insertada pero no se pudo recuperar")
             return None
 
     except sqlite3.Error as e:
-        logger.error(f"Database error creating session: {e}")
+        logger.error(f"Error de base de datos al crear sesión: {e}")
         if conn:
             conn.rollback()
         raise
     except Exception as e:
-        logger.error(f"Unexpected error creating session: {e}")
+        logger.error(f"Error inesperado al crear sesión: {e}")
         if conn:
             conn.rollback()
         raise
@@ -129,7 +149,7 @@ def create_session_db():
 
 def get_session_db(session_id: str):
     """Get a session from SQLite database"""
-    logger.info(f"Getting session with ID: {session_id}")
+    logger.info(f"Obteniendo sesión con ID: {session_id}")
     conn = None
     try:
         conn = get_db()
@@ -139,18 +159,85 @@ def get_session_db(session_id: str):
         session = cursor.fetchone()
 
         if session:
+            # Convertir timestamps a datetime
             session['created_at'] = datetime.fromisoformat(session['created_at'])
-            logger.info(f"Found session: {session}")
+            session['updated_at'] = datetime.fromisoformat(session['updated_at'])
+            # Convertir metadata de JSON string a dict
+            try:
+                if session['metadata'] and session['metadata'] != '{}':
+                    session['metadata'] = json.loads(session['metadata'])
+                else:
+                    session['metadata'] = None
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error parseando metadata JSON para sesión {session_id}: {e}")
+                session['metadata'] = None
+            logger.info(f"Sesión encontrada: {session}")
         else:
-            logger.warning(f"Session not found with ID: {session_id}")
+            logger.warning(f"Sesión no encontrada con ID: {session_id}")
 
         return session
 
     except sqlite3.Error as e:
-        logger.error(f"Database error getting session: {e}")
+        logger.error(f"Error de base de datos al obtener sesión: {e}")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error getting session: {e}")
+        logger.error(f"Error inesperado al obtener sesión: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+def update_session_db(session_id: str, type_value: str, state: str, metadata: dict):
+    """Update a session in SQLite database"""
+    logger.info(f"Actualizando sesión con ID: {session_id}")
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        updated_at = datetime.utcnow().isoformat()
+        metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata else '{}'
+        
+        cursor.execute("""
+        UPDATE sessions 
+        SET type = ?, state = ?, metadata = ?, updated_at = ?
+        WHERE id_session = ?
+        """, (type_value, state, metadata_json, updated_at, session_id))
+        
+        if cursor.rowcount == 0:
+            logger.warning(f"No se encontró sesión con ID: {session_id}")
+            return None
+            
+        conn.commit()
+
+        # Obtener la sesión actualizada
+        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
+        session = cursor.fetchone()
+        
+        if session:
+            # Convertir timestamps a datetime
+            session['created_at'] = datetime.fromisoformat(session['created_at'])
+            session['updated_at'] = datetime.fromisoformat(session['updated_at'])
+            # Convertir metadata de JSON string a dict
+            try:
+                session['metadata'] = json.loads(session['metadata']) if session['metadata'] else None
+            except json.JSONDecodeError:
+                session['metadata'] = None
+            logger.info(f"Sesión actualizada: {session}")
+            return session
+        else:
+            logger.error("Error al recuperar la sesión actualizada")
+            return None
+
+    except sqlite3.Error as e:
+        logger.error(f"Error de base de datos al actualizar sesión: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado al actualizar sesión: {e}")
+        if conn:
+            conn.rollback()
         raise
     finally:
         if conn:
