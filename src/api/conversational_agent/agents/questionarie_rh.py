@@ -12,7 +12,7 @@ from ..utils.env_utils import load_env_variables
 load_env_variables()
 
 
-class SimpleRRHHAgent:
+class QuestionarieRHAgent:
     """
     Agente conversacional de RRHH simplificado sin LangGraph.
     
@@ -302,7 +302,7 @@ pero nuestro equipo se pondrá en contacto contigo pronto.""")
 
 
 # Función de conveniencia para crear una instancia del agente
-def create_simple_rrhh_agent(questions: List[str] = None) -> SimpleRRHHAgent:
+def create_questionarie_rh_agent(questions: List[str] = None) -> QuestionarieRHAgent:
     """
     Crea una nueva instancia del agente de RRHH simplificado.
     
@@ -312,4 +312,4 @@ def create_simple_rrhh_agent(questions: List[str] = None) -> SimpleRRHHAgent:
     Returns:
         Instancia del agente configurada
     """
-    return SimpleRRHHAgent(questions) 
+    return QuestionarieRHAgent(questions) 

@@ -297,7 +297,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     1. Verificar que la sesión existe y está en estado 'started'
     2. Conectar WebSocket y inicializar agente
     3. Manejar mensajes bidireccionales
-    4. Procesar respuestas con SimpleRRHHAgent
+    4. Procesar respuestas con QuestionarieRHAgent
     """
     logger.info(f"🔗 Nueva conexión WebSocket solicitada para sesión: {session_id}")
     

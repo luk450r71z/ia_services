@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 
-from .agents.simple_agent import SimpleRRHHAgent
+from .agents.questionarie_rh import QuestionarieRHAgent
 from auth.db.sqlite_db import get_session_db, update_session_db, save_conversation_response
 from .models.schemas import WebSocketMessage
 
@@ -19,7 +19,7 @@ class WebSocketManager:
         # Diccionario para almacenar conexiones activas: {session_id: websocket}
         self.active_connections: Dict[str, WebSocket] = {}
         # Diccionario para almacenar agentes activos: {session_id: agent}
-        self.active_agents: Dict[str, SimpleRRHHAgent] = {}
+        self.active_agents: Dict[str, QuestionarieRHAgent] = {}
     
     async def connect(self, websocket: WebSocket, session_id: str):
         """
@@ -163,7 +163,7 @@ class WebSocketManager:
                 questions = []
             
             # Crear agente con las preguntas específicas
-            agent = SimpleRRHHAgent(questions=questions)
+            agent = QuestionarieRHAgent(questions=questions)
             self.active_agents[session_id] = agent
             
             logger.info(f"🤖 Agente inicializado para sesión {session_id} con {len(questions)} preguntas")
@@ -171,7 +171,7 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"❌ Error inicializando agente para sesión {session_id}: {str(e)}")
     
-    async def _update_session_to_complete(self, session_id: str, agent: SimpleRRHHAgent):
+    async def _update_session_to_complete(self, session_id: str, agent: QuestionarieRHAgent):
         """
         Actualiza el estado de la sesión a 'complete' en la base de datos.
         
