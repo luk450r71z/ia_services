@@ -24,19 +24,7 @@ La aplicación estará disponible en: http://localhost:3000
 npm run build
 ```
 
-## Docker
 
-### Construir imagen
-```bash
-docker build -t ia-services-chatbot .
-```
-
-### Ejecutar contenedor
-```bash
-docker run -p 8080:80 ia-services-chatbot
-```
-
-La aplicación estará disponible en: http://localhost:8080
 
 ## Estructura del Proyecto
 
@@ -48,6 +36,5 @@ src/chatbot/
 │   ├── App.vue        # Componente principal
 │   ├── components/    # Componentes reutilizables
 │   └── pages/         # Páginas de la aplicación
-├── package.json       # Dependencias del proyecto
-└── Dockerfile         # Configuración Docker
+└── package.json       # Dependencias del proyecto
 ``` 

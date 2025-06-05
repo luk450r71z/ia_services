@@ -2,14 +2,9 @@ from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_groq import ChatGroq
 import os
-import json
-from pathlib import Path
-from dotenv import load_dotenv
 import datetime
 
 from ..models.conversation_models import ConversationState
-from .tools.question_search_tool import search_questions_file_direct
-from .tools.response_save_tool import save_user_responses_direct
 from .tools.email_tool import simulate_email_send_direct
 from ..utils.env_utils import load_env_variables
 
@@ -56,8 +51,7 @@ class SimpleRRHHAgent:
         if self.questions:
             questions = self.questions
         else:
-            # Cargar preguntas por defecto desde archivo
-            #questions = search_questions_file_direct("data/questions.json", None)
+            # No hay preguntas configuradas
             print("❌ No hay preguntas configuradas para esta sesión")
             return "Error: No se han configurado preguntas para esta entrevista. Por favor, contacta al administrador."
         
@@ -127,7 +121,7 @@ Empecemos:"""
             else:
                 response_file = "data/user_responses.json"
             
-            #save_user_responses_direct(self.state.user_responses, response_file)
+            # Las respuestas se guardan automáticamente en la base de datos
             self.state.needs_clarification = False
             self.state.clarification_reason = None
             print(f"✅ Respuesta aceptada para: {self.state.current_question}")
