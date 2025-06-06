@@ -31,7 +31,7 @@ class ConversationState(BaseModel):
     conversation_complete: bool = False
     
     # Datos adicionales que pueden ser útiles
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    extra_data: Dict[str, Any] = Field(default_factory=dict)
     
     class Config:
         arbitrary_types_allowed = True 

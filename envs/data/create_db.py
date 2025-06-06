@@ -13,12 +13,12 @@ cursor = conn.cursor()
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS sessions (
     id_session TEXT PRIMARY KEY,
-    type TEXT CHECK(type IN ('questionary', 'help_desk')),
+    type TEXT CHECK(length(type) > 0 AND length(type) <= 50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    state TEXT CHECK(state IN ('new', 'initiated', 'started', 'complete', 'expired')),
-    status BOOLEAN DEFAULT 1,
-    metadata JSON DEFAULT '{}'
+    status TEXT CHECK(status IN ('new', 'initiated', 'started', 'complete', 'expired')),
+    content JSON DEFAULT '{}',
+    configs JSON DEFAULT '{}'
 )
 ''')
 

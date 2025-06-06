@@ -33,7 +33,7 @@ class QuestionarieRHAgent:
         
         # Guardar preguntas en metadatos
         if questions:
-            self.state.metadata["custom_questions"] = questions
+            self.state.extra_data["custom_questions"] = questions
             print(f"🎯 Agente inicializado con {len(questions)} preguntas personalizadas")
         else:
             print("🎯 Agente inicializado sin preguntas específicas")

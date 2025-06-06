@@ -1,35 +1,24 @@
 from datetime import datetime
 from typing import Dict, Any, Optional
-from uuid import UUID
 from pydantic import BaseModel, Field
+from enum import Enum
 
-class SessionResponse(BaseModel):
-    """Response model for session"""
+class SessionStatus(str, Enum):
+    """Estados posibles de una sesión"""
+    NEW = "new"
+    INITIATED = "initiated"
+    STARTED = "started"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+    ERROR = "error"
+
+class SessionIdResponse(BaseModel):
+    """Response model que solo contiene el ID de sesión"""
     id_session: str
-    type: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-    state: str
-    status: int
-    metadata: Optional[Dict[str, Any]] = None
 
 class AuthCredentials(BaseModel):
     """Model for authentication credentials"""
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=1)
 
-class InitiateServiceRequest(BaseModel):
-    """Request model for service initiation"""
-    id_session: str
-    type: str = Field(..., pattern="^(questionary|help_desk)$")
-    metadata: Dict[str, Any]
-
-class InitiateServiceResponse(BaseModel):
-    """Response model for service initiation"""
-    id_session: str
-    type: str
-    created_at: datetime
-    updated_at: datetime
-    state: str
-    status: int
-    metadata: Dict[str, Any] 
+ 

@@ -31,8 +31,9 @@
         ✅ Sesión iniciada correctamente
       </div>
       <ChatWidget 
-        :auth-token="authToken"
         :session-id="id_session"
+        :resource_uri="resource_uri"
+        :service-type="SERVICE_CONFIG.type"
         @message-sent="onMessageSent"
         @conversation-complete="onConversationComplete"
       />
@@ -47,17 +48,15 @@ import { ref } from 'vue'
 // Estados reactivos
 const isAuthenticated = ref(false)
 const isInitializing = ref(false)
-const authToken = ref(null)
 const errorMessage = ref('')
 const conversationCompleted = ref(false)
 
 // Configuración de la API
-const API_BASE_URL = 'http://127.0.0.1:8000'
-
 const SERVICE_CONFIG = {
-  id_service: "3f91e6c2-1d43-4a77-9c17-6ab872a4b2db",
+  base_url: 'http://127.0.0.1:8000',
   password: "secure_password",
-  user: "fabian"
+  user: "fabian",
+  type: "questionnarie" // Tipo de servicio configurable
 }
 
 // Preguntas personalizadas - extraer solo el texto
@@ -71,10 +70,10 @@ const PREGUNTAS_PERSONALIZADAS = [
 
 // ID de sesión se generará dinámicamente en la autenticación
 const id_session = ref('') // Se llenará después de la autenticación
+const resource_uri = ref('') // Se establecerá durante la inicialización
 
 // Función principal para iniciar conversación
 const iniciarConversacion = async () => {
-  isInitializing.value = true
   errorMessage.value = ''
   conversationCompleted.value = false
   
@@ -89,11 +88,20 @@ const iniciarConversacion = async () => {
     
     // Paso 2: Inicializar servicio con preguntas
     console.log('🔧 Paso 2: Inicializando servicio con preguntas...')
-    await inicializarServicio(sessionId)
-    
+    isInitializing.value = true
+    const serviceData = await inicializarServicio(sessionId)
+    console.log('🔍 DEBUG - serviceData completo:', serviceData)
+
     // Todo listo para el ChatWidget
-    authToken.value = sessionId
     id_session.value = sessionId
+    resource_uri.value = serviceData.urls?.resource_uri
+    
+    console.log('🔍 DEBUG - resource_uri asignado:', resource_uri.value)
+    
+    if (!resource_uri.value) {
+      throw new Error('No se pudo obtener resource_uri de la respuesta del servicio')
+    }
+    
     isAuthenticated.value = true
     console.log('✅ Servicio inicializado correctamente. ChatWidget puede iniciar.')
     
@@ -108,9 +116,9 @@ const iniciarConversacion = async () => {
 // Función para obtener el token (Paso 1)
 const obtenerToken = async () => {
   // Codificar credenciales en Base64 para HTTP Basic Auth
-  const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`)
+  const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`) // TODO: en archivo .env
   
-  const response = await fetch(`${API_BASE_URL}/api/chat/session/auth`, {
+  const response = await fetch(`${SERVICE_CONFIG.base_url}/api/chat/session/auth`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -130,7 +138,7 @@ const obtenerToken = async () => {
 
 // Función para inicializar servicio con preguntas (Paso 2)
 const inicializarServicio = async (sessionId) => {
-  const response = await fetch(`${API_BASE_URL}/api/chat/service/initiate`, {
+      const response = await fetch(`${SERVICE_CONFIG.base_url}/api/chat/${SERVICE_CONFIG.type}/initiate`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -138,9 +146,14 @@ const inicializarServicio = async (sessionId) => {
     },
     body: JSON.stringify({
       id_session: sessionId,
-      type: 'questionary',
-      metadata: {
+      type: SERVICE_CONFIG.type,
+      content: {
         questions: PREGUNTAS_PERSONALIZADAS
+      },
+      configs: {
+        "webhook_url" : "",
+        "email"       : ["lucasd@gmail.com","santi@gmail.com"],
+        "avatar"      : false,
       }
     })
   })
@@ -167,8 +180,8 @@ const onConversationComplete = (progress) => {
   isAuthenticated.value = false
   
   // Resetear el estado para permitir una nueva conversación si es necesario
-  authToken.value = null
   id_session.value = ''
+  resource_uri.value = ''
   
   // Mostrar mensaje de que la conversación ha terminado
   errorMessage.value = ''

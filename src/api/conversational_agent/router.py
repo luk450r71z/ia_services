@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, status, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
 from typing import Dict, Any
 import json
 from datetime import datetime, timedelta
@@ -7,6 +6,9 @@ import logging
 
 # Importar funciones de la base de datos de auth
 from auth.db.sqlite_db import get_session_db, update_session_db, get_conversation_responses
+
+# Importar modelos
+from .models.schemas import StartServiceRequest, StartServiceResponse, InitiateServiceRequest, InitiateServiceResponse, ServiceUrls, WebSocketServiceResponse
 
 # Importar WebSocket manager
 from .websocket_manager import websocket_manager
@@ -16,38 +18,135 @@ logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
 
-class StartServiceRequest(BaseModel):
-    """Request model for starting service"""
-    id_session: str
-    type: str
-
-class StartServiceResponse(BaseModel):
-    """Response model for service start"""
-    id_session: str
-    type: str
-    created_at: datetime
-    updated_at: datetime
-    state: str
-    status: int
-    metadata: Dict[str, Any]
-
-@chat_router.post("/service/start", response_model=StartServiceResponse)
-async def start_service(request: StartServiceRequest):
+@chat_router.post("/questionnarie/initiate", response_model=InitiateServiceResponse)
+async def initiate_questionnarie(request: InitiateServiceRequest):
     """
-    Iniciar un servicio conversacional.
+    Inicializar un cuestionario según el tipo especificado.
     
     Controles:
     - Verificar tiempo de expiración (5 minutos)
-    - Verificar status de sesión
-    - Verificar estado (que no esté inicializada)
-    - Verificar existencia de type
-    - Verificar existencia de objeto JSON
+    - Verificar status de sesión (debe estar en 'new')
+    - Verificar formato JSON
     - Establecer valores
-    - Enrutar agente por tipo
-    - Crear WebSocket
     """
     session_id = request.id_session
     service_type = request.type
+    content = request.content
+    configs = request.configs
+    
+    logger.info(f"Iniciando servicio '{service_type}' para sesión: {session_id}")
+    
+    try:
+        # Obtener la sesión existente
+        session = get_session_db(session_id)
+        if not session:
+            logger.warning(f"Sesión no encontrada: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Sesión no encontrada"
+            )
+        
+        # Verificar tiempo de expiración (5 minutos)
+        created_at = session['created_at']
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        
+        time_diff = datetime.utcnow() - created_at
+        if time_diff > timedelta(minutes=5):
+            logger.warning(f"Sesión expirada: {session_id}, creada hace {time_diff}")
+            # Actualizar status en BD como expired
+            update_session_db(
+                session_id=session_id,
+                type_value=service_type,
+                status="expired",
+                content=content,
+                configs=configs or {}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="Sesión expirada. Máximo 5 minutos desde la creación"
+            )
+        
+        # Verificar status de sesión (debe estar en 'new')
+        if session['status'] != 'new':
+            logger.warning(f"Sesión en estado inválido: {session_id}, status: {session['status']}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La sesión debe estar en estado 'new'"
+            )
+        
+        # Verificar formato JSON del content
+        try:
+            if not isinstance(content, dict):
+                raise ValueError("Content debe ser un objeto JSON válido")
+        except Exception as e:
+            logger.error(f"Error en formato JSON del content: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato JSON inválido en content"
+            )
+        
+        # Agregar resource_uri al content como endpoint para iniciar la conexión
+        enhanced_content = content.copy()
+        enhanced_content["resource_uri"] = f"http://localhost:8000/api/chat/questionnarie/start"
+        
+        # Configuraciones por defecto si no se proporcionan
+        enhanced_configs = configs.copy() if configs else {}
+        
+        # Actualizar la sesión en la base de datos
+        updated_session = update_session_db(
+            session_id=session_id,
+            type_value=service_type,
+            status="initiated",
+            content=enhanced_content,
+            configs=enhanced_configs
+        )
+        
+        if not updated_session:
+            logger.error(f"Error al actualizar sesión: {session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al actualizar la sesión"
+            )
+        
+        logger.info(f"Servicio '{service_type}' iniciado exitosamente para sesión: {session_id}")
+        
+        # Crear respuesta con URLs
+        urls = ServiceUrls(
+            resource_uri=f"http://localhost:8000/api/chat/questionnarie/start",
+            webui="http://localhost:3000/"
+        )
+        
+        return InitiateServiceResponse(
+            id_session=session_id,
+            urls=urls
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado al iniciar servicio: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {str(e)}"
+        )
+
+@chat_router.post("/questionnarie/start", response_model=WebSocketServiceResponse)
+async def start_questionnarie(request: StartServiceRequest):
+    """
+    Iniciar un cuestionario conversacional.
+    
+    Controles:
+    - Verificar tiempo de expiración (5 minutos)
+    - Verificar status de sesión (debe estar en 'initiated')
+    - Verificar existencia de preguntas
+    - Verificar existencia de objeto JSON
+    - Establecer valores
+    - Crear WebSocket
+    """
+    session_id = request.id_session
+    service_type = "questionnarie"
     
     logger.info(f"Iniciando servicio conversacional '{service_type}' para sesión: {session_id}")
     
@@ -69,79 +168,87 @@ async def start_service(request: StartServiceRequest):
         time_diff = datetime.utcnow() - created_at
         if time_diff > timedelta(minutes=5):
             logger.warning(f"Sesión expirada: {session_id}, creada hace {time_diff}")
+            # Actualizar status en BD como expired
+            update_session_db(
+                session_id=session_id,
+                type_value=service_type,
+                status="expired",
+                content=session.get('content', {}),
+                configs=session.get('configs', {})
+            )
             raise HTTPException(
                 status_code=status.HTTP_410_GONE,
                 detail="Sesión expirada. Máximo 5 minutos desde la creación"
             )
         
-        # Verificar status de sesión
-        if session['status'] != 1:
-            logger.warning(f"Sesión inactiva: {session_id}, status: {session['status']}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sesión inactiva"
-            )
-        
-        # Verificar estado (debe estar 'initiated', no 'new' ni 'started')
-        if session['state'] not in ['initiated']:
-            logger.warning(f"Estado de sesión inválido: {session_id}, estado: {session['state']}")
-            if session['state'] == 'new':
+        # Verificar status de sesión (debe estar en 'initiated')
+        if session['status'] != 'initiated':
+            logger.warning(f"Estado de sesión inválido: {session_id}, status: {session['status']}")
+            if session['status'] == 'new':
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La sesión debe ser inicializada primero con /api/chat/service/initiate"
+                    detail="La sesión debe ser inicializada primero con /api/chat/questionnarie/initiate"
                 )
-            elif session['state'] == 'started':
+            elif session['status'] == 'started':
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="El servicio ya ha sido iniciado"
+                    detail="El cuestionario ya ha sido iniciado"
                 )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Estado de sesión inválido: {session['state']}"
+                    detail=f"Estado de sesión inválido: {session['status']}"
                 )
         
-        # Verificar existencia de type
-        if not session.get('type'):
-            logger.error(f"Sesión sin tipo definido: {session_id}")
+        # Verificar que el tipo sea questionnarie
+        if session.get('type') != 'questionnarie':
+            logger.error(f"Tipo de sesión inválido: {session.get('type')}. Se esperaba 'questionnarie'")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La sesión debe tener un tipo definido"
+                detail="Esta sesión debe ser de tipo 'questionnarie'"
             )
         
-        # Verificar que el type coincida
-        if session['type'] != service_type:
-            logger.warning(f"Tipo de servicio no coincide: sesión={session['type']}, solicitado={service_type}")
+        # Verificar existencia de objeto JSON en content
+        content = session.get('content')
+        if not content or not isinstance(content, dict):
+            logger.error(f"Content inválido o faltante en sesión: {session_id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tipo de servicio no coincide. Esperado: {session['type']}, recibido: {service_type}"
+                detail="La sesión debe tener content válido en formato JSON"
             )
         
-        # Verificar existencia de objeto JSON en metadata
-        metadata = session.get('metadata')
-        if not metadata or not isinstance(metadata, dict):
-            logger.error(f"Metadata inválido o faltante en sesión: {session_id}")
+        # Configurar agente de cuestionario
+        questions = content.get("questions", [])
+        if not questions:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La sesión debe tener metadata válido en formato JSON"
+                detail="El cuestionario requiere preguntas en el content"
             )
         
-        # Enrutar agente por tipo
-        agent_config = _route_agent_by_type(service_type, metadata)
+        # Agregar configuración del agente al content
+        enhanced_content = content.copy()
+        enhanced_content.update({
+            "agent_class": "QuestionnarieAgent",
+            "questions": questions,
+            "total_questions": len(questions),
+            "current_question": 0,
+            "responses": {},
+            "conversation_flow": "sequential"
+        })
+        enhanced_content["websocket_endpoint"] = f"/api/chat/ws/{session_id}"
+        enhanced_content["agent_type"] = service_type
+        enhanced_content["started_at"] = datetime.utcnow().isoformat()
         
-        # Agregar configuración del agente al metadata
-        enhanced_metadata = metadata.copy()
-        enhanced_metadata.update(agent_config)
-        enhanced_metadata["websocket_endpoint"] = f"/api/chat/ws/{session_id}"
-        enhanced_metadata["agent_type"] = service_type
-        enhanced_metadata["started_at"] = datetime.utcnow().isoformat()
+        # Obtener configuraciones existentes
+        configs = session.get('configs', {})
         
         # Actualizar la sesión en la base de datos con estado 'started'
         updated_session = update_session_db(
             session_id=session_id,
             type_value=service_type,
-            state="started",
-            metadata=enhanced_metadata
+            status="started",
+            content=enhanced_content,
+            configs=configs
         )
         
         if not updated_session:
@@ -151,10 +258,38 @@ async def start_service(request: StartServiceRequest):
                 detail="Error al actualizar la sesión"
             )
         
-        logger.info(f"Servicio '{service_type}' iniciado exitosamente para sesión: {session_id}")
-        logger.info(f"WebSocket disponible en: /api/chat/ws/{session_id}")
+        # Inicializar el agente y preparar el primer mensaje
+        welcome_message = None
+        try:
+            agent_initialized = await websocket_manager.initialize_agent(session_id, updated_session)
+            if agent_initialized:
+                logger.info(f"Agente inicializado exitosamente para sesión: {session_id}")
+                # Obtener el primer mensaje del agente
+                welcome_message = websocket_manager.get_welcome_message(session_id)
+                if welcome_message:
+                    logger.info(f"Primer mensaje del agente preparado para sesión: {session_id}")
+            else:
+                logger.warning(f"No se pudo inicializar el agente para sesión: {session_id}")
+        except Exception as e:
+            logger.error(f"Error inicializando agente para sesión {session_id}: {str(e)}")
+            # No fallar el endpoint por esto, el agente se puede inicializar cuando se conecte el WebSocket
         
-        return StartServiceResponse(**updated_session)
+        logger.info(f"Cuestionario con {len(questions)} preguntas iniciado exitosamente para sesión: {session_id}")
+        logger.info(f"WebSocket disponible en: /api/chat/ws/{session_id}")
+        logger.info(f"Agente listo para recibir conexiones en: ws://localhost:8000/api/chat/ws/{session_id}")
+        
+        # Crear respuesta simplificada con solo la información del WebSocket
+        websocket_response = {
+            "id_session": session_id,
+            "websocket_endpoint": f"ws://localhost:8000/api/chat/ws/{session_id}",
+            "status": "ready",
+            "message": "Cuestionario iniciado exitosamente. Conéctate al WebSocket para comenzar.",
+        }
+        
+        if welcome_message:
+            websocket_response["welcome_message"] = welcome_message
+        
+        return WebSocketServiceResponse(**websocket_response)
         
     except HTTPException:
         # Re-raise HTTP exceptions
@@ -166,132 +301,16 @@ async def start_service(request: StartServiceRequest):
             detail=f"Error interno del servidor: {str(e)}"
         )
 
-def _route_agent_by_type(service_type: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Enrutar y configurar agente según el tipo de servicio.
-    
-    Args:
-        service_type: Tipo de servicio ('questionary' o 'help_desk')
-        metadata: Metadata existente de la sesión
-    
-    Returns:
-        Dict con configuración específica del agente
-    """
-    agent_config = {}
-    
-    if service_type == "questionary":
-        # Configuración para agente de cuestionario
-        questions = metadata.get("questions", [])
-        if not questions:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El tipo 'questionary' requiere preguntas en el metadata"
-            )
-        
-        agent_config = {
-            "agent_class": "QuestionaryAgent",
-            "questions": questions,
-            "total_questions": len(questions),
-            "current_question": 0,
-            "responses": {},
-            "conversation_flow": "sequential"
-        }
-        
-        logger.info(f"Configurado agente de cuestionario con {len(questions)} preguntas")
-        
-    elif service_type == "help_desk":
-        # Configuración para agente de help desk
-        categories = metadata.get("categories", ["general", "technical", "billing"])
-        knowledge_base = metadata.get("knowledge_base", {})
-        
-        agent_config = {
-            "agent_class": "HelpDeskAgent",
-            "categories": categories,
-            "knowledge_base": knowledge_base,
-            "conversation_flow": "free_form",
-            "escalation_enabled": True
-        }
-        
-        logger.info(f"Configurado agente de help desk con categorías: {categories}")
-        
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Tipo de servicio no soportado: {service_type}"
-        )
-    
-    return agent_config
 
-@chat_router.get("/session/{session_id}/conversations")
-async def get_session_conversations(session_id: str):
-    """
-    Obtiene todas las respuestas de conversación para una sesión específica.
-    
-    Args:
-        session_id: ID de la sesión
-    
-    Returns:
-        Lista de conversaciones guardadas
-    """
-    try:
-        logger.info(f"Obteniendo conversaciones para sesión: {session_id}")
-        
-        # Verificar que la sesión existe
-        session_data = get_session_db(session_id)
-        if not session_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Sesión no encontrada"
-            )
-        
-        # Obtener las conversaciones
-        conversations = get_conversation_responses(session_id)
-        
-        return {
-            "session_id": session_id,
-            "total_responses": len(conversations),
-            "conversations": conversations,
-            "session_info": {
-                "type": session_data.get("type"),
-                "state": session_data.get("state"),
-                "created_at": session_data.get("created_at"),
-                "updated_at": session_data.get("updated_at")
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error obteniendo conversaciones para sesión {session_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {str(e)}"
-        )
 
-@chat_router.get("/health")
-async def health_check():
-    """Endpoint de salud del servicio conversacional"""
-    try:
-        return {
-            "status": "healthy",
-            "service": "conversational_agent",
-            "timestamp": datetime.now().isoformat(),
-            "endpoints": [
-                "/api/chat/service/start",
-                "/api/chat/session/{session_id}/conversations",
-                "/api/chat/ws/{session_id}"
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Error en health check: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
 
 @chat_router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """
     Endpoint WebSocket para comunicación en tiempo real con el agente conversacional.
     
-         URL: ws://localhost:8000/ws/chat/{service_type}/{session_id}
+         URL: ws://localhost:8000/api/chat/ws/{session_id}
     
     Flujo:
     1. Verificar que la sesión existe y está en estado 'started'
@@ -310,8 +329,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             await websocket.close(code=4004, reason="Sesión no encontrada")
             return
         
-        if session_data.get('state') != 'started':
-            logger.warning(f"❌ Intento de conexión WebSocket a sesión no iniciada: {session_id}, estado: {session_data.get('state')}")
+        if session_data.get('status') != 'started':
+            logger.warning(f"❌ Intento de conexión WebSocket a sesión no iniciada: {session_id}, estado: {session_data.get('status')}")
             await websocket.close(code=4003, reason="La sesión debe estar en estado 'started'")
             return
         

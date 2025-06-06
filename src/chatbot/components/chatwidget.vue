@@ -44,18 +44,17 @@
   export default {
     name: 'ChatWidget',
     props: {
-      jobOffer: {
-        type: String,
-        default: null
-      },
-
-      authToken: {
-        type: String,
-        default: null
-      },
       sessionId: {
         type: String,
         default: 'default-session'
+      },
+      resource_uri: {
+        type: String,
+        required: true
+      },
+      serviceType: {
+        type: String,
+        default: 'auto' // 'auto' para obtener dinámicamente, o especificar tipo directo
       },
 
     },
@@ -65,9 +64,22 @@
         isConnected: false,
         userInput: '',
         messages: [],
-        websocketUrl: '', // Se determinará dinámicamente desde el metadata
-        API_BASE_URL: 'http://127.0.0.1:8000',
         conversationCompleted: false // Flag para controlar si la conversación terminó
+      }
+    },
+    computed: {
+      apiBaseUrl() {
+        // Extraer la base URL del resource_uri
+        if (this.resource_uri) {
+          try {
+            const url = new URL(this.resource_uri);
+            return `${url.protocol}//${url.host}`;
+          } catch (error) {
+            console.error('❌ Error extrayendo base URL:', error);
+            return 'http://127.0.0.1:8000'; // fallback
+          }
+        }
+        return 'http://127.0.0.1:8000'; // fallback por defecto
       }
     },
     async mounted() {
@@ -75,11 +87,7 @@
       console.log('📝 Sesión ya debería estar inicializada por test.vue');
       
       const started = await this.startConversationalService();
-      if (started) {
-        // Pequeño delay para asegurar que el servidor procese el inicio
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        this.connectWebSocket();
-      } else {
+      if (!started) {
         this.addMessage('system', 'No se pudo iniciar el servicio conversacional. Por favor, recarga la página.');
       }
     },
@@ -90,9 +98,31 @@
       async startConversationalService() {
         try {
           console.log(`🚀 Iniciando servicio conversacional para sesión: ${this.sessionId}`);
-          console.log('ℹ️ Las preguntas ya están guardadas en la BD por test.vue, el agente las obtendrá automáticamente');
           
-          const response = await fetch(`${this.API_BASE_URL}/api/chat/service/start`, {
+          // Usar el tipo de servicio proporcionado directamente o intentar obtenerlo dinámicamente
+          let serviceType;
+          
+          if (!this.serviceType || this.serviceType === 'auto') {
+            console.log('⚠️ No se proporcionó service-type, intentando obtenerlo dinámicamente...');
+            try {
+              serviceType = await this.getServiceTypeFromSession();
+            } catch (error) {
+              console.error('❌ No se pudo obtener el tipo de servicio:', error.message);
+              this.addMessage('system', `Error: No se pudo determinar el tipo de servicio. ${error.message}`);
+              return false;
+            }
+          } else {
+            serviceType = this.serviceType;
+            console.log(`✅ Usando service-type proporcionado: ${serviceType}`);
+          }
+          
+          console.log(`ℹ️ Tipo de servicio: ${serviceType}`);
+          console.log(`ℹ️ Resource URI: ${this.resource_uri}`);
+          
+          
+
+          
+          const response = await fetch(this.resource_uri, {
             method: 'POST',
             headers: {
               'accept': 'application/json',
@@ -100,7 +130,7 @@
             },
             body: JSON.stringify({
               id_session: this.sessionId,
-              type: 'questionary'
+              type: serviceType
             })
           });
           
@@ -115,10 +145,25 @@
           const data = await response.json();
           console.log('✅ Servicio conversacional iniciado correctamente:', data);
           
-          // Actualizar la URL del WebSocket con el endpoint correcto
-          if (data.metadata && data.metadata.websocket_endpoint) {
-            this.websocketUrl = `ws://localhost:8000${data.metadata.websocket_endpoint}`;
-            console.log(`🔗 WebSocket URL actualizada: ${this.websocketUrl}`);
+          // Debug: verificar qué contiene la respuesta
+          console.log('🔍 Debug - websocket_endpoint:', data.websocket_endpoint);
+          console.log('🔍 Debug - welcome_message:', data.welcome_message);
+          
+          // Obtener el endpoint WebSocket directamente de la respuesta
+          if (data.websocket_endpoint) {
+            console.log(`🔗 WebSocket URL obtenida: ${data.websocket_endpoint}`);
+            
+            // Agregar mensaje de bienvenida si está disponible
+            if (data.welcome_message) {
+              this.addMessage('agent', data.welcome_message);
+              console.log('✅ Mensaje de bienvenida agregado');
+            }
+            
+            this.connectWebSocket(data.websocket_endpoint);
+          } else {
+            console.error('❌ No se encontró websocket_endpoint en la respuesta del servicio');
+            console.log('📝 Respuesta completa:', JSON.stringify(data, null, 2));
+            this.addMessage('system', 'Error: No se pudo obtener el endpoint WebSocket del servicio');
           }
           
           return true;
@@ -128,12 +173,47 @@
           return false;
         }
       },
-      connectWebSocket() {
+      
+      async getServiceTypeFromSession() {
         try {
-          console.log('🔗 Conectando a WebSocket:', this.websocketUrl);
+          // Usar la URL base proporcionada como prop
+          const sessionUrl = `${this.apiBaseUrl}/api/chat/session/${this.sessionId}`;
+          
+          console.log(`🔍 Consultando tipo de servicio desde: ${sessionUrl}`);
+          
+          const response = await fetch(sessionUrl, {
+            method: 'GET',
+            headers: {
+              'accept': 'application/json'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Error HTTP ${response.status}: No se pudo obtener información de la sesión`);
+          }
+          
+          const sessionData = await response.json();
+          const type = sessionData.type;
+          
+          if (!type) {
+            throw new Error('La sesión no tiene un tipo de servicio definido');
+          }
+          
+          console.log(`✅ Tipo de servicio obtenido de la sesión: ${type}`);
+          return type;
+          
+        } catch (error) {
+          console.error(`❌ Error obteniendo tipo de servicio:`, error);
+          throw error;
+        }
+      },
+      
+      connectWebSocket(wsUrl) {
+        try {
+          console.log('🔗 Conectando a WebSocket:', wsUrl);
           
           // Conexión directa al WebSocket
-          this.ws = new WebSocket(this.websocketUrl);
+          this.ws = new WebSocket(wsUrl);
           
           this.ws.onopen = function() {
             console.log('✅ Conectado al agente RRHH');
@@ -159,6 +239,9 @@
                     // Emitir evento para que el componente padre maneje el cierre
                     this.$emit('conversation-complete', data.data.summary);
                 }
+            } else if (data.type === 'system') {
+                console.log('🔧 Mensaje del sistema:', data.content);
+                this.addMessage('system', data.content);
             } else if (data.type === 'typing_indicator') {
                 console.log('⏱️ Agente escribiendo:', data.is_typing);
             } else if (data.type === 'error') {

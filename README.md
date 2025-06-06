@@ -122,6 +122,7 @@ yarn build
 
 #### Autenticación
 - `POST /api/chat/session/auth` - Crear nueva sesión con autenticación básica
+- `GET /api/chat/session/{session_id}` - Obtener información de una sesión existente
 - `POST /api/chat/service/initiate` - Inicializar servicio en sesión existente
 
 #### Chat Conversacional

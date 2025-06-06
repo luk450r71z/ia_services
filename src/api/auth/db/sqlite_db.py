@@ -68,12 +68,12 @@ def init_db():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             id_session TEXT PRIMARY KEY,
-            type TEXT CHECK(type IN ('questionary', 'help_desk')),
+            type TEXT CHECK(length(type) > 0 AND length(type) <= 50),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            state TEXT CHECK(state IN ('new', 'initiated', 'started', 'complete', 'expired')),
-            status BOOLEAN DEFAULT 1,
-            metadata JSON DEFAULT '{}'
+            status TEXT CHECK(status IN ('new', 'initiated', 'started', 'complete', 'expired')),
+            content JSON DEFAULT '{}',
+            configs JSON DEFAULT '{}'          
         )
         """)
 
@@ -109,16 +109,16 @@ def create_session_db():
         
         logger.info(f"Insertando sesión con ID: {session_id}")
         cursor.execute("""
-        INSERT INTO sessions (id_session, type, created_at, updated_at, state, status, metadata)
+        INSERT INTO sessions (id_session, type, created_at, updated_at, status, content, configs)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             session_id,
             None,  # type por defecto
             created_at,
             created_at,  # updated_at igual a created_at inicialmente
-            'new',  # state por defecto
-            1,  # status por defecto (boolean como integer)
-            '{}'  # metadata por defecto como JSON vacío
+            'new',  # status por defecto
+            '{}',  # content por defecto como JSON vacío
+            '{}'  # configs por defecto como JSON vacío
         ))
         conn.commit()
 
@@ -130,15 +130,24 @@ def create_session_db():
             # Convertir los timestamps a datetime para consistencia
             session['created_at'] = datetime.fromisoformat(session['created_at'])
             session['updated_at'] = datetime.fromisoformat(session['updated_at'])
-            # Convertir metadata de JSON string a dict
+            # Convertir content y configs de JSON string a dict
             try:
-                if session['metadata'] and session['metadata'] != '{}':
-                    session['metadata'] = json.loads(session['metadata'])
+                if session['content'] and session['content'] != '{}':
+                    session['content'] = json.loads(session['content'])
                 else:
-                    session['metadata'] = None
+                    session['content'] = None
             except json.JSONDecodeError as e:
-                logger.warning(f"Error parseando metadata JSON para sesión nueva: {e}")
-                session['metadata'] = None
+                logger.warning(f"Error parseando content JSON para sesión nueva: {e}")
+                session['content'] = None
+                
+            try:
+                if session['configs'] and session['configs'] != '{}':
+                    session['configs'] = json.loads(session['configs'])
+                else:
+                    session['configs'] = None
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error parseando configs JSON para sesión nueva: {e}")
+                session['configs'] = None
             logger.info(f"Sesión creada en base de datos: {session}")
             return session
         else:
@@ -174,15 +183,24 @@ def get_session_db(session_id: str):
             # Convertir timestamps a datetime
             session['created_at'] = datetime.fromisoformat(session['created_at'])
             session['updated_at'] = datetime.fromisoformat(session['updated_at'])
-            # Convertir metadata de JSON string a dict
+            # Convertir content y configs de JSON string a dict
             try:
-                if session['metadata'] and session['metadata'] != '{}':
-                    session['metadata'] = json.loads(session['metadata'])
+                if session['content'] and session['content'] != '{}':
+                    session['content'] = json.loads(session['content'])
                 else:
-                    session['metadata'] = None
+                    session['content'] = None
             except json.JSONDecodeError as e:
-                logger.warning(f"Error parseando metadata JSON para sesión {session_id}: {e}")
-                session['metadata'] = None
+                logger.warning(f"Error parseando content JSON para sesión {session_id}: {e}")
+                session['content'] = None
+                
+            try:
+                if session['configs'] and session['configs'] != '{}':
+                    session['configs'] = json.loads(session['configs'])
+                else:
+                    session['configs'] = None
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error parseando configs JSON para sesión {session_id}: {e}")
+                session['configs'] = None
             logger.info(f"Sesión encontrada: {session}")
         else:
             logger.warning(f"Sesión no encontrada con ID: {session_id}")
@@ -199,7 +217,7 @@ def get_session_db(session_id: str):
         if conn:
             conn.close()
 
-def update_session_db(session_id: str, type_value: str, state: str, metadata: dict):
+def update_session_db(session_id: str, type_value: str, status: str, content: dict, configs: dict = None):
     """Update a session in SQLite database"""
     logger.info(f"Actualizando sesión con ID: {session_id}")
     conn = None
@@ -208,13 +226,14 @@ def update_session_db(session_id: str, type_value: str, state: str, metadata: di
         cursor = conn.cursor()
 
         updated_at = datetime.utcnow().isoformat()
-        metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata else '{}'
+        content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
+        configs_json = json.dumps(configs, ensure_ascii=False) if configs else '{}'
         
         cursor.execute("""
         UPDATE sessions 
-        SET type = ?, state = ?, metadata = ?, updated_at = ?
+        SET type = ?, status = ?, content = ?, configs = ?, updated_at = ?
         WHERE id_session = ?
-        """, (type_value, state, metadata_json, updated_at, session_id))
+        """, (type_value, status, content_json, configs_json, updated_at, session_id))
         
         if cursor.rowcount == 0:
             logger.warning(f"No se encontró sesión con ID: {session_id}")
@@ -230,11 +249,16 @@ def update_session_db(session_id: str, type_value: str, state: str, metadata: di
             # Convertir timestamps a datetime
             session['created_at'] = datetime.fromisoformat(session['created_at'])
             session['updated_at'] = datetime.fromisoformat(session['updated_at'])
-            # Convertir metadata de JSON string a dict
+            # Convertir content y configs de JSON string a dict
             try:
-                session['metadata'] = json.loads(session['metadata']) if session['metadata'] else None
+                session['content'] = json.loads(session['content']) if session['content'] else None
             except json.JSONDecodeError:
-                session['metadata'] = None
+                session['content'] = None
+                
+            try:
+                session['configs'] = json.loads(session['configs']) if session['configs'] else None
+            except json.JSONDecodeError:
+                session['configs'] = None
             logger.info(f"Sesión actualizada: {session}")
             return session
         else:
