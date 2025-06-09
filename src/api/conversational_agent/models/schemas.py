@@ -3,9 +3,6 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 
-# Importar SessionStatus desde auth
-from auth.models.schemas import SessionStatus
-
 class ServiceType(str, Enum):
     """Tipos de servicios disponibles"""
     QUESTIONNARIE = "questionnarie"
@@ -61,16 +58,6 @@ class StartServiceRequest(BaseModel):
     """Request model for starting service"""
     id_session: str = Field(..., min_length=1)
 
-class StartServiceResponse(BaseModel):
-    """Response model for service start"""
-    id_session: str
-    type: str
-    created_at: datetime
-    updated_at: datetime
-    status: SessionStatus
-    content: Dict[str, Any]
-    configs: Optional[Dict[str, Any]] = None
-    welcome_message: Optional[str] = None
 
 class WebSocketServiceResponse(BaseModel):
     """Simple response model for WebSocket service start"""

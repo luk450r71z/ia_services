@@ -285,28 +285,26 @@ def save_conversation_response(session_id: str, id_question: int, question: str,
     
     Args:
         session_id: ID de la sesión
-        id_question: Número de la pregunta (opcional, puede ser None)
+        id_question: ID de la pregunta
         question: Texto de la pregunta
-        response: Texto de la respuesta del usuario
+        response: Respuesta del usuario
     
     Returns:
         bool: True si se guardó exitosamente, False en caso contrario
     """
-    logger.info(f"Guardando respuesta de conversación para sesión: {session_id}")
+    logger.info(f"Guardando respuesta de conversación para sesión: {session_id}, pregunta {id_question}")
     conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        timestamp = datetime.utcnow().isoformat()
-        
         cursor.execute("""
         INSERT INTO conversation_response (id_session, id_question, question, response, datetime)
         VALUES (?, ?, ?, ?, ?)
-        """, (session_id, id_question, question, response, timestamp))
+        """, (session_id, id_question, question, response, datetime.utcnow().isoformat()))
         
         conn.commit()
-        logger.info(f"Respuesta guardada exitosamente para sesión {session_id}, pregunta {id_question}")
+        logger.info(f"Respuesta de conversación guardada exitosamente para sesión {session_id}")
         return True
 
     except sqlite3.Error as e:
@@ -319,47 +317,6 @@ def save_conversation_response(session_id: str, id_question: int, question: str,
         if conn:
             conn.rollback()
         return False
-    finally:
-        if conn:
-            conn.close()
-
-def get_conversation_responses(session_id: str):
-    """
-    Obtiene todas las respuestas de conversación para una sesión
-    
-    Args:
-        session_id: ID de la sesión
-    
-    Returns:
-        list: Lista de diccionarios con las respuestas de la conversación
-    """
-    logger.info(f"Obteniendo respuestas de conversación para sesión: {session_id}")
-    conn = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT * FROM conversation_response 
-        WHERE id_session = ? 
-        ORDER BY datetime ASC
-        """, (session_id,))
-        
-        responses = cursor.fetchall()
-        
-        # Convertir timestamps a datetime
-        for response in responses:
-            response['datetime'] = datetime.fromisoformat(response['datetime'])
-        
-        logger.info(f"Se encontraron {len(responses)} respuestas para la sesión {session_id}")
-        return responses
-
-    except sqlite3.Error as e:
-        logger.error(f"Error de base de datos al obtener respuestas: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Error inesperado al obtener respuestas: {e}")
-        raise
     finally:
         if conn:
             conn.close()

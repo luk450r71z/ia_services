@@ -8,10 +8,4 @@ logger = logging.getLogger(__name__)
 USERS = {
     "test_user": "test_password",
     "fabian": "secure_password"
-}
-
-def authenticate_user(username: str, password: str):
-    """Authenticate a user"""
-    if username not in USERS or USERS[username] != password:
-        return False
-    return True 
+} 

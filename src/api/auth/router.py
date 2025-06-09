@@ -2,11 +2,9 @@ import logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from secrets import compare_digest
-from datetime import datetime
 
 from auth.db.database import USERS
-from auth.db.sqlite_db import create_session_db, get_session_db
-from auth.models.schemas import SessionIdResponse
+from auth.db.sqlite_db import create_session_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,8 +16,8 @@ auth_router = APIRouter(tags=["Authentication"])
 # HTTP Basic Auth security
 security = HTTPBasic()
 
-@auth_router.post("/session/auth", response_model=SessionIdResponse)
-async def create_session(credentials: HTTPBasicCredentials = Depends(security)):
+@auth_router.post("/session/auth")
+async def create_session(credentials: HTTPBasicCredentials = Depends(security)) -> dict:
     """
     Crear una nueva sesión usando HTTP Basic Auth.
     Valida las credenciales de usuario y contraseña contra la base de datos USERS.
@@ -28,6 +26,9 @@ async def create_session(credentials: HTTPBasicCredentials = Depends(security)):
     - Verificar credenciales de usuario
     - Crear nueva sesión con estado 'new'
     - Establecer valores iniciales
+    
+    Returns:
+        dict: {"id_session": str}
     """
     username = credentials.username
     password = credentials.password
@@ -56,7 +57,7 @@ async def create_session(credentials: HTTPBasicCredentials = Depends(security)):
             )
         
         logger.info(f"Nueva sesión creada para usuario {username}: {session['id_session']}")
-        return SessionIdResponse(**session)
+        return {"id_session": session['id_session']}
         
     except Exception as e:
         logger.error(f"Error al crear sesión: {str(e)}")
@@ -64,13 +65,5 @@ async def create_session(credentials: HTTPBasicCredentials = Depends(security)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear sesión: {str(e)}"
         )
-
-
-# TODO: Implementar endpoint para helpdesk en el futuro
-# @auth_router.post("/chat/helpdesk/initiate", response_model=InitiateServiceResponse)
-# async def initiate_helpdesk(request: InitiateServiceRequest):
-#     """Inicializar un servicio de helpdesk según el tipo especificado."""
-#     # Lógica similar pero específica para helpdesk
-#     pass
 
 

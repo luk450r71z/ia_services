@@ -1,0 +1,4 @@
+    [
+      {"id": "1", "tipo": "abierta", "pregunta": "cual es tu experiencia en python?"},
+      {"id": "2", "tipo": "multiplechoice", "pregunta": "donde vivis", "opciones": ["brasil", "argentina"]}
+    ]

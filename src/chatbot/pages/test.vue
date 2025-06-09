@@ -20,8 +20,6 @@
       
       <div v-if="conversationCompleted" class="completion-message">
         ✅ Conversación completada exitosamente. El chat se ha cerrado.
-        <br>
-        <small>Puedes iniciar una nueva conversación presionando el botón.</small>
       </div>
     </div>
     
@@ -34,7 +32,6 @@
         :session-id="id_session"
         :resource_uri="resource_uri"
         :service-type="SERVICE_CONFIG.type"
-        @message-sent="onMessageSent"
         @conversation-complete="onConversationComplete"
       />
     </div>
@@ -53,60 +50,53 @@ const conversationCompleted = ref(false)
 
 // Configuración de la API
 const SERVICE_CONFIG = {
-  base_url: 'http://127.0.0.1:8000',
   password: "secure_password",
   user: "fabian",
   type: "questionnarie" // Tipo de servicio configurable
 }
 
-// Preguntas personalizadas - extraer solo el texto
-const PREGUNTAS_PERSONALIZADAS = [
-  "¿Cuál es tu experiencia con Python?",
-  "¿Has trabajado con FastAPI anteriormente?",
-  "¿Cuáles son tus principales fortalezas técnicas?",
-  "¿Por qué te interesa trabajar en esta posición?",
-  "¿Tienes alguna pregunta para nosotros?"
-]
+// Preguntas cargadas desde JSON
+const preguntasPersonalizadas = ref([])
 
 // ID de sesión se generará dinámicamente en la autenticación
 const id_session = ref('') // Se llenará después de la autenticación
 const resource_uri = ref('') // Se establecerá durante la inicialización
 
+// Función para cargar preguntas
+const cargarPreguntas = async () => {
+  try {
+    const response = await fetch('/questions.json')
+    if (!response.ok) throw new Error(`Error ${response.status}`)
+    preguntasPersonalizadas.value = await response.json()
+  } catch (error) {
+    preguntasPersonalizadas.value = [
+      "¿Cuáles son tus principales fortalezas técnicas?",
+      "¿Por qué te interesa trabajar en esta posición?",
+      "¿Tienes alguna pregunta para nosotros?"
+    ]
+  }
+}
+
 // Función principal para iniciar conversación
 const iniciarConversacion = async () => {
   errorMessage.value = ''
   conversationCompleted.value = false
+  isInitializing.value = true
   
   try {
-    // Paso 1: Obtener token y crear sesión
-    console.log('🔐 Paso 1: Autenticación...')
     const sessionId = await obtenerToken()
-    
-    if (!sessionId) {
-      throw new Error('No se pudo obtener el token de autenticación')
-    }
-    
-    // Paso 2: Inicializar servicio con preguntas
-    console.log('🔧 Paso 2: Inicializando servicio con preguntas...')
-    isInitializing.value = true
+    await cargarPreguntas()
     const serviceData = await inicializarServicio(sessionId)
-    console.log('🔍 DEBUG - serviceData completo:', serviceData)
 
-    // Todo listo para el ChatWidget
     id_session.value = sessionId
     resource_uri.value = serviceData.urls?.resource_uri
     
-    console.log('🔍 DEBUG - resource_uri asignado:', resource_uri.value)
-    
     if (!resource_uri.value) {
-      throw new Error('No se pudo obtener resource_uri de la respuesta del servicio')
+      throw new Error('No se pudo obtener resource_uri')
     }
     
     isAuthenticated.value = true
-    console.log('✅ Servicio inicializado correctamente. ChatWidget puede iniciar.')
-    
   } catch (error) {
-    console.error('❌ Error en inicialización:', error)
     errorMessage.value = error.message || 'Error en la inicialización'
   } finally {
     isInitializing.value = false
@@ -115,10 +105,9 @@ const iniciarConversacion = async () => {
 
 // Función para obtener el token (Paso 1)
 const obtenerToken = async () => {
-  // Codificar credenciales en Base64 para HTTP Basic Auth
-  const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`) // TODO: en archivo .env
+  const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`)
   
-  const response = await fetch(`${SERVICE_CONFIG.base_url}/api/chat/session/auth`, {
+  const response = await fetch(`http://localhost:8000/api/chat/session/auth`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -132,13 +121,12 @@ const obtenerToken = async () => {
   }
   
   const data = await response.json()
-  console.log('✅ Sesión creada:', data.id_session)
   return data.id_session
 }
 
 // Función para inicializar servicio con preguntas (Paso 2)
 const inicializarServicio = async (sessionId) => {
-      const response = await fetch(`${SERVICE_CONFIG.base_url}/api/chat/${SERVICE_CONFIG.type}/initiate`, {
+  const response = await fetch(`http://localhost:8000/api/chat/${SERVICE_CONFIG.type}/initiate`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -148,12 +136,12 @@ const inicializarServicio = async (sessionId) => {
       id_session: sessionId,
       type: SERVICE_CONFIG.type,
       content: {
-        questions: PREGUNTAS_PERSONALIZADAS
+        questions: preguntasPersonalizadas.value
       },
       configs: {
-        "webhook_url" : "",
-        "email"       : ["lucasd@gmail.com","santi@gmail.com"],
-        "avatar"      : false,
+        "webhook_url": "",
+        "email": ["lucasd@gmail.com", "santiago.ferrero@adaptiera.com"],
+        "avatar": false,
       }
     })
   })
@@ -163,27 +151,14 @@ const inicializarServicio = async (sessionId) => {
     throw new Error(`Error al inicializar servicio: ${response.status} - ${errorText}`)
   }
   
-  const data = await response.json()
-  console.log('✅ Servicio inicializado:', data)
-  return data
+  return await response.json()
 }
 
 // Funciones para manejar eventos del ChatWidget
-const onMessageSent = (message) => {
-  console.log('Mensaje enviado:', message)
-}
-
-const onConversationComplete = (progress) => {
-  console.log('Conversación completada:', progress)
-  
-  // Cerrar el ChatWidget y no aceptar más respuestas
+const onConversationComplete = () => {
   isAuthenticated.value = false
-  
-  // Resetear el estado para permitir una nueva conversación si es necesario
   id_session.value = ''
   resource_uri.value = ''
-  
-  // Mostrar mensaje de que la conversación ha terminado
   errorMessage.value = ''
   conversationCompleted.value = true
 }

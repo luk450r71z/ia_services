@@ -3,20 +3,42 @@ from typing import Dict, Any
 import json
 from datetime import datetime, timedelta
 import logging
-
 # Importar funciones de la base de datos de auth
-from auth.db.sqlite_db import get_session_db, update_session_db, get_conversation_responses
-
+from auth.db.sqlite_db import get_session_db, update_session_db
 # Importar modelos
-from .models.schemas import StartServiceRequest, StartServiceResponse, InitiateServiceRequest, InitiateServiceResponse, ServiceUrls, WebSocketServiceResponse
-
+from .models.schemas import StartServiceRequest, InitiateServiceRequest, InitiateServiceResponse, ServiceUrls, WebSocketServiceResponse
 # Importar WebSocket manager
 from .websocket_manager import websocket_manager
-
+# Importar agentes específicos
+from .agents.questionarie_rh import QuestionarieRHAgent
 # Configure logging
 logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
+
+# Registrar agentes específicos al cargar el router
+def register_questionnarie_agent():
+    """Registra la factoría para agentes de cuestionario"""
+    def create_questionnarie_agent(session_data: Dict) -> 'QuestionarieRHAgent':
+        
+        content = session_data.get('content', {})
+        questions_data = content.get('questions', [])
+        
+        if not questions_data:
+            logger.warning(f"⚠️ No hay preguntas configuradas para sesión questionnarie")
+            return None
+        
+        # 🧠 Extraer preguntas inteligentemente de cualquier formato
+        questions = QuestionarieRHAgent.extract_questions(questions_data)
+        logger.info(f"🤖 Agente extrajo {len(questions)} preguntas del JSON")
+        
+        return QuestionarieRHAgent(questions=questions)
+    
+    websocket_manager.register_agent_factory("questionnarie", create_questionnarie_agent)
+    logger.info("🤖 Agente questionnarie registrado en websocket_manager")
+
+# Registrar agentes al cargar el módulo
+register_questionnarie_agent()
 
 @chat_router.post("/questionnarie/initiate", response_model=InitiateServiceResponse)
 async def initiate_questionnarie(request: InitiateServiceRequest):
@@ -86,19 +108,15 @@ async def initiate_questionnarie(request: InitiateServiceRequest):
                 detail="Formato JSON inválido en content"
             )
         
-        # Agregar resource_uri al content como endpoint para iniciar la conexión
-        enhanced_content = content.copy()
-        enhanced_content["resource_uri"] = f"http://localhost:8000/api/chat/questionnarie/start"
-        
         # Configuraciones por defecto si no se proporcionan
         enhanced_configs = configs.copy() if configs else {}
         
-        # Actualizar la sesión en la base de datos
+        # Actualizar la sesión en la base de datos (sin agregar resource_uri al content)
         updated_session = update_session_db(
             session_id=session_id,
             type_value=service_type,
             status="initiated",
-            content=enhanced_content,
+            content=content,
             configs=enhanced_configs
         )
         
@@ -225,29 +243,15 @@ async def start_questionnarie(request: StartServiceRequest):
                 detail="El cuestionario requiere preguntas en el content"
             )
         
-        # Agregar configuración del agente al content
-        enhanced_content = content.copy()
-        enhanced_content.update({
-            "agent_class": "QuestionnarieAgent",
-            "questions": questions,
-            "total_questions": len(questions),
-            "current_question": 0,
-            "responses": {},
-            "conversation_flow": "sequential"
-        })
-        enhanced_content["websocket_endpoint"] = f"/api/chat/ws/{session_id}"
-        enhanced_content["agent_type"] = service_type
-        enhanced_content["started_at"] = datetime.utcnow().isoformat()
-        
         # Obtener configuraciones existentes
         configs = session.get('configs', {})
         
-        # Actualizar la sesión en la base de datos con estado 'started'
+        # Actualizar la sesión en la base de datos con estado 'started' (sin modificar content)
         updated_session = update_session_db(
             session_id=session_id,
             type_value=service_type,
             status="started",
-            content=enhanced_content,
+            content=content,
             configs=configs
         )
         
@@ -274,21 +278,16 @@ async def start_questionnarie(request: StartServiceRequest):
             logger.error(f"Error inicializando agente para sesión {session_id}: {str(e)}")
             # No fallar el endpoint por esto, el agente se puede inicializar cuando se conecte el WebSocket
         
-        logger.info(f"Cuestionario con {len(questions)} preguntas iniciado exitosamente para sesión: {session_id}")
-        logger.info(f"WebSocket disponible en: /api/chat/ws/{session_id}")
         logger.info(f"Agente listo para recibir conexiones en: ws://localhost:8000/api/chat/ws/{session_id}")
         
-        # Crear respuesta simplificada con solo la información del WebSocket
+        # Crear respuesta con información del WebSocket (solo para respuesta, no se guarda en BD)
         websocket_response = {
             "id_session": session_id,
             "websocket_endpoint": f"ws://localhost:8000/api/chat/ws/{session_id}",
             "status": "ready",
             "message": "Cuestionario iniciado exitosamente. Conéctate al WebSocket para comenzar.",
         }
-        
-        if welcome_message:
-            websocket_response["welcome_message"] = welcome_message
-        
+                
         return WebSocketServiceResponse(**websocket_response)
         
     except HTTPException:
@@ -300,10 +299,6 @@ async def start_questionnarie(request: StartServiceRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error interno del servidor: {str(e)}"
         )
-
-
-
-
 
 @chat_router.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
@@ -344,6 +339,28 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         # Conectar usando el manager
         await websocket_manager.connect(websocket, session_id)
         logger.info(f"✅ WebSocket conectado exitosamente para {service_type} en sesión: {session_id}")
+        
+        # Inicializar el agente sin enviar mensaje aún 
+        # El primer mensaje se enviará cuando el cliente envíe algo o se pueda enviar automáticamente
+        try:
+            agent_initialized = await websocket_manager.initialize_agent(session_id, session_data)
+            if agent_initialized:
+                # Enviar mensaje de bienvenida inmediatamente después de inicializar
+                welcome_message = websocket_manager.get_welcome_message(session_id)
+                if welcome_message:
+                    await websocket_manager.send_message(
+                        session_id,
+                        "agent_response", 
+                        welcome_message,
+                        {"is_welcome": True}
+                    )
+                    logger.info(f"📨 Mensaje de bienvenida enviado a sesión: {session_id}")
+                else:
+                    logger.warning(f"⚠️ No se pudo obtener mensaje de bienvenida para sesión: {session_id}")
+            else:
+                logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {session_id}")
+        except Exception as e:
+            logger.error(f"❌ Error inicializando agente en WebSocket: {str(e)}")
         
         try:
             while True:

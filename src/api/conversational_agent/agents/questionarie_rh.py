@@ -3,6 +3,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_groq import ChatGroq
 import os
 import datetime
+import json
 
 from ..models.conversation_models import ConversationState
 from .tools.email_tool import simulate_email_send_direct
@@ -14,29 +15,137 @@ load_env_variables()
 
 class QuestionarieRHAgent:
     """
-    Agente conversacional de RRHH simplificado sin LangGraph.
+    Agente conversacional de RRHH.
     
     Este agente maneja entrevistas automatizadas de manera secuencial,
     recopila respuestas, decide cuándo repreguntar y envía resúmenes por correo.
     """
     
-    def __init__(self, questions: List[str] = None):
+    def __init__(self, questions: List[Any] = None):
         """
         Inicializa el agente de RRHH.
         
         Args:
-            questions: Lista de preguntas específicas para la entrevista
+            questions: Lista de preguntas (pueden ser strings o dicts con opciones)
         """
         self.state = ConversationState()
         self.initialized = False
-        self.questions = questions or []
+        
+        # Normalizar preguntas al formato interno
+        if questions:
+            self.questions_data = self._normalize_questions(questions)
+            self.questions = [q["question"] for q in self.questions_data]
+        else:
+            self.questions_data = []
+            self.questions = []
         
         # Guardar preguntas en metadatos
-        if questions:
-            self.state.extra_data["custom_questions"] = questions
-            print(f"🎯 Agente inicializado con {len(questions)} preguntas personalizadas")
+        if self.questions:
+            self.state.extra_data["questions_data"] = self.questions_data
+            print(f"🎯 Agente inicializado con {len(self.questions)} preguntas")
         else:
             print("🎯 Agente inicializado sin preguntas específicas")
+    
+    def _normalize_questions(self, questions: List[Any]) -> List[Dict[str, Any]]:
+        """Normaliza preguntas a formato interno consistente"""
+        normalized = []
+        for q in questions:
+            if isinstance(q, str):
+                # Pregunta simple como string
+                normalized.append({"question": q, "options": None})
+            elif isinstance(q, dict):
+                # Ya está en formato dict
+                normalized.append(q)
+        return normalized
+    
+    @staticmethod
+    def extract_questions(questions_data: Any) -> List[Dict[str, Any]]:
+        """
+        Extrae preguntas inteligentemente de cualquier formato JSON usando LLM.
+        
+        Args:
+            questions_data: Datos en cualquier formato (array, object, nested)
+            
+        Returns:
+            Lista de diccionarios con pregunta y opciones (si las hay)
+            Formato: [{"question": "¿Pregunta?", "options": ["a", "b"] o None}]
+            
+        Raises:
+            ValueError: Si no se puede extraer preguntas o no hay LLM disponible
+        """
+        # Convertir a JSON string
+        json_str = json.dumps(questions_data, indent=2, ensure_ascii=False)
+        
+        # Configurar LLM (obligatorio)
+        load_env_variables()
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        
+        if not groq_api_key:
+            raise ValueError("❌ GROQ_API_KEY es requerida para extraer preguntas inteligentemente")
+        
+        print("🧠 Extrayendo preguntas con opciones usando LLM")
+        
+        llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
+        
+        prompt = f"""JSON_INPUT:
+{json_str}
+
+TASK: Extract questions and return JSON array only.
+
+OUTPUT_FORMAT:
+[{{"question": "text", "options": null}}, {{"question": "text", "options": ["a","b"]}}]
+
+RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
+        
+        response = llm.invoke(prompt)
+        content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
+        
+        try:
+            # Extraer JSON de la respuesta (puede haber texto adicional)
+            json_start = content.find('[')
+            json_end = content.rfind(']') + 1
+            
+            if json_start == -1 or json_end == 0:
+                raise ValueError("❌ No se encontró array JSON en la respuesta")
+            
+            json_content = content[json_start:json_end]
+            questions_with_options = json.loads(json_content)
+            
+            if not questions_with_options:
+                raise ValueError("❌ No se encontraron preguntas en el JSON proporcionado")
+            
+            print(f"✅ Extraídas {len(questions_with_options)} preguntas con opciones")
+            return questions_with_options
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"❌ Error parseando JSON: {json_content[:100]}...")
+        except Exception as e:
+            raise ValueError(f"❌ Error procesando respuesta del LLM: {str(e)}")
+    
+    def _format_question_with_options(self, question_index: int) -> str:
+        """
+        Formatea una pregunta con sus opciones (si las tiene)
+        
+        Args:
+            question_index: Índice de la pregunta
+            
+        Returns:
+            Pregunta formateada con opciones
+        """
+        if not self.questions_data or question_index >= len(self.questions_data):
+            return self.questions[question_index] if question_index < len(self.questions) else ""
+        
+        question_data = self.questions_data[question_index]
+        question_text = question_data["question"]
+        options = question_data.get("options")
+        
+        if options and isinstance(options, list):
+            # Es pregunta de opción múltiple
+            options_text = "\n".join([f"  • {option}" for option in options])
+            return f"{question_text}\n\nOpciones:\n{options_text}\n\nPor favor, elige una de las opciones anteriores."
+        else:
+            # Es pregunta abierta
+            return question_text
     
     def start_conversation(self) -> str:
         """
@@ -45,6 +154,19 @@ class QuestionarieRHAgent:
         Returns:
             Mensaje inicial del agente
         """
+        # Si ya está inicializado, devolver el mensaje de bienvenida sin volver a inicializar
+        if self.initialized:
+            print("✅ Conversación ya inicializada, devolviendo mensaje existente")
+            welcome_content = """¡Hola! Soy el asistente de RRHH de Adaptiera. 
+Voy a realizarte algunas preguntas para conocerte mejor.
+Responde con la mayor sinceridad posible.
+
+Empecemos:"""
+            if self.state.current_question:
+                formatted_question = self._format_question_with_options(self.state.current_question_index)
+                return f"{welcome_content}\n\n{formatted_question}"
+            return welcome_content
+        
         print("🚀 Inicializando conversación...")
         
         # Usar preguntas proporcionadas o cargar preguntas por defecto
@@ -73,12 +195,13 @@ Empecemos:"""
             welcome_message = AIMessage(content=welcome_content)
             self.state.messages.append(welcome_message)
             
-            # Primera pregunta
-            question_message = AIMessage(content=self.state.current_question)
+            # Primera pregunta con opciones (si las tiene)
+            formatted_question = self._format_question_with_options(0)
+            question_message = AIMessage(content=formatted_question)
             self.state.messages.append(question_message)
             
             self.initialized = True
-            return f"{welcome_message.content}\n\n{self.state.current_question}"
+            return f"{welcome_message.content}\n\n{formatted_question}"
         
         return "¡Hola! Soy el asistente de RRHH. ¿Cómo puedo ayudarte?"
     
@@ -145,70 +268,105 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
     def _evaluate_response(self, user_response: str) -> tuple[bool, str]:
         """
         Evalúa si la respuesta del usuario es satisfactoria.
+        Valida especialmente preguntas de opción múltiple.
         """
         current_question = self.state.current_question
         
-        # Asegurar que las variables de entorno estén cargadas
-        load_env_variables()
+        # Verificar si es pregunta de opción múltiple
+        current_index = self.state.current_question_index
+        if (self.questions_data and 
+            current_index < len(self.questions_data)):
+            
+            question_data = self.questions_data[current_index]
+            options = question_data.get("options")
+            
+            if options and isinstance(options, list):
+                # Es pregunta de opción múltiple - validar respuesta
+                return self._validate_multiple_choice(user_response, options)
         
-        # Configurar el LLM (Groq)
+        # Para preguntas abiertas, usar evaluación con LLM
+        return self._evaluate_open_question(user_response, current_question)
+    
+    def _validate_multiple_choice(self, user_response: str, options: List[str]) -> tuple[bool, str]:
+        """Valida respuesta de opción múltiple usando LLM"""
+        # Configurar LLM
+        load_env_variables()
         groq_api_key = os.getenv("GROQ_API_KEY")
+        
         if not groq_api_key:
-            print("⚠️ GROQ_API_KEY no configurada, usando lógica simple")
-            # Lógica simple sin LLM (más permisiva)
+            raise ValueError("❌ GROQ_API_KEY es requerida para validar opciones múltiples")
+        
+        llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
+        
+        options_text = ", ".join(options)
+        
+        prompt = f"""
+        Determina si la respuesta del usuario corresponde a alguna de las opciones válidas.
+        
+        Opciones válidas: {options_text}
+        Respuesta del usuario: {user_response}
+        
+        Responde SOLO con:
+        - "VALIDA" si la respuesta coincide con alguna opción (acepta variaciones, sinónimos, etc.)
+        - "INVALIDA" si no corresponde a ninguna opción
+        
+        Sé FLEXIBLE - acepta respuestas que claramente se refieren a una opción aunque no sean exactas.
+        """
+        
+        response = llm.invoke(prompt)
+        content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
+        
+        if content.startswith("VALIDA"):
+            print(f"✅ Opción múltiple válida: {user_response}")
+            return True, ""
+        else:
+            print(f"❌ Opción múltiple inválida: {user_response}")
+            options_list = "\n".join([f"  • {opt}" for opt in options])
+            return False, f"Debes elegir una de las siguientes opciones:\n{options_list}"
+    
+    def _evaluate_open_question(self, user_response: str, current_question: str) -> tuple[bool, str]:
+        """Evalúa pregunta abierta con LLM"""
+        load_env_variables()
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        
+        if not groq_api_key:
+            # Fallback simple para preguntas abiertas
             is_satisfactory = len(user_response.strip()) > 3
             clarification_reason = "Por favor, proporciona una respuesta más detallada." if not is_satisfactory else ""
             return is_satisfactory, clarification_reason
         
-        print(f"✅ GROQ_API_KEY encontrada, usando evaluación inteligente")
+        llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
         
-        try:
-            # Usar Groq para evaluar la respuesta
-            llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
-            
-            evaluation_prompt = f"""
-            Evalúa si la siguiente respuesta es satisfactoria para la pregunta planteada:
-            
-            Pregunta: {current_question}
-            Respuesta: {user_response}
-            
-            Responde SOLO con:
-            - "SATISFACTORIA" si la respuesta proporciona información básica relevante a la pregunta
-            - "NECESITA_CLARIFICACION: [razón específica]" si la respuesta está completamente vacía, es irrelevante o muy confusa
-            
-            Sé PERMISIVO en tu evaluación. Acepta respuestas que tengan al menos alguna relación con la pregunta, 
+        prompt = f"""
+        Evalúa si la siguiente respuesta es satisfactoria para la pregunta planteada:
+        
+        Pregunta: {current_question}
+        Respuesta: {user_response}
+        
+        Responde SOLO con:
+        - "SATISFACTORIA" si la respuesta proporciona información básica relevante
+        - "NECESITA_CLARIFICACION: [razón específica]" si está vacía, es irrelevante o muy confusa
+        
+        Sé PERMISIVO en tu evaluación. Acepta respuestas que tengan al menos alguna relación con la pregunta, 
             incluso si son breves o no muy detalladas. Solo solicita clarificación si la respuesta realmente 
             no tiene sentido o está completamente fuera de tema.
-            """
+        """
+        
+        try:
+            response = llm.invoke(prompt)
+            content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
             
-            # ✅ SOLUCIÓN DEFINITIVA: Manejo seguro de la respuesta
-            response = llm.invoke(evaluation_prompt)
-            
-            # Extraer contenido de forma segura - ESTO SOLUCIONA EL ERROR
-            if hasattr(response, 'content') and response.content:
-                evaluation = response.content.strip()
-            elif isinstance(response, str):
-                evaluation = response.strip()
-            else:
-                # Convertir a string de forma segura
-                evaluation = str(response).strip()
-            
-            print(f"🔍 Evaluación recibida: {evaluation}")
-            
-            if evaluation.startswith("SATISFACTORIA"):
+            if content.startswith("SATISFACTORIA"):
                 return True, ""
-            elif evaluation.startswith("NECESITA_CLARIFICACION"):
-                reason = evaluation.replace("NECESITA_CLARIFICACION:", "").strip()
+            elif content.startswith("NECESITA_CLARIFICACION"):
+                reason = content.replace("NECESITA_CLARIFICACION:", "").strip()
                 return False, reason
             else:
-                # Si la respuesta no tiene el formato esperado, ser permisivo
-                print(f"⚠️ Formato inesperado: {evaluation}")
+                # Formato inesperado, ser permisivo
                 return True, ""
-                
         except Exception as e:
-            print(f"Error al evaluar con Groq: {e}")
-            print(f"Tipo de error: {type(e)}")
-            # Fallback a lógica simple (más permisiva)
+            print(f"Error evaluando pregunta abierta: {e}")
+            # Fallback simple
             is_satisfactory = len(user_response.strip()) > 3
             clarification_reason = "Por favor, proporciona una respuesta más detallada." if not is_satisfactory else ""
             return is_satisfactory, clarification_reason
@@ -228,10 +386,13 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
             # Hay más preguntas
             self.state.current_question = self.state.pending_questions[self.state.current_question_index]
             
+            # Formatear siguiente pregunta con opciones (si las tiene)
+            formatted_question = self._format_question_with_options(self.state.current_question_index)
+            
             next_question_message = AIMessage(content=f"""Perfecto, gracias por tu respuesta.
 
 Siguiente pregunta:
-{self.state.current_question}""")
+{formatted_question}""")
             
             self.state.messages.append(next_question_message)
             return next_question_message.content
