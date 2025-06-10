@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat IA - Frontend</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <meta name="description" content="Frontend de Chat IA sin autenticación - conexión directa por WebSocket">
+    <meta name="keywords" content="chat, ia, frontend, websocket, sin autenticacion">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        /* Preloader mejorado */
+        .preloader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .preloader.fade-out {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .preloader-content {
+            text-align: center;
+            padding: 40px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .preloader-spinner {
+            width: 80px;
+            height: 80px;
+            border: 6px solid rgba(255, 255, 255, 0.2);
+            border-left: 6px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 30px;
+        }
+        
+        .preloader h1 {
+            font-size: 28px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .preloader p {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+        
+        .preloader .status {
+            font-size: 14px;
+            opacity: 0.7;
+            font-style: italic;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Error de carga mejorado */
+        .load-error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(220, 53, 69, 0.95);
+            color: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
+            z-index: 10000;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        
+        .load-error h2 {
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .load-error p {
+            margin-bottom: 25px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        
+        .load-error button {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 15px 30px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .load-error button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Estilos para la app */
+        #app {
+            min-height: 100vh;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <!-- Preloader -->
+    <div id="preloader" class="preloader">
+        <div class="preloader-content">
+            <div class="preloader-spinner"></div>
+            <h1>🤖 Chat IA</h1>
+            <p>Conectando al WebSocket...</p>
+            <div class="status">Sin autenticación | Powered by Adaptiera</div>
+        </div>
+    </div>
+    
+    <!-- Error de carga (oculto por defecto) -->
+    <div id="loadError" class="load-error" style="display: none;">
+        <h2>❌ Error de Conexión</h2>
+        <p id="errorMessage">No se pudo cargar el frontend de chat IA</p>
+        <p>Verifica tu conexión a internet y que el servidor esté disponible.</p>
+        <button onclick="location.reload()">🔄 Reintentar Conexión</button>
+    </div>
+    
+    <!-- Contenedor principal de la aplicación Vue -->
+    <div id="app"></div>
+    
+    <script type="module">
+        // Variables globales para el manejo del preloader
+        let preloaderHidden = false;
+        
+        // Función para ocultar el preloader
+        function hidePreloader() {
+            if (preloaderHidden) return;
+            
+            const preloader = document.getElementById('preloader');
+            if (preloader) {
+                preloader.classList.add('fade-out');
+                setTimeout(() => {
+                    preloader.style.display = 'none';
+                    preloaderHidden = true;
+                }, 500);
+            }
+        }
+        
+        // Función para mostrar error de carga
+        function showLoadError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('loadError').style.display = 'block';
+            hidePreloader();
+        }
+        
+        // Función para actualizar el estado del preloader
+        function updatePreloaderStatus(status) {
+            const statusElement = document.querySelector('.preloader .status');
+            if (statusElement) {
+                statusElement.textContent = status;
+            }
+        }
+        
+        // Inicio del frontend
+        console.log('🚀 Iniciando Frontend Chat IA...');
+        updatePreloaderStatus('Cargando componentes Vue...');
+        
+        try {
+            // Importar y ejecutar el frontend
+            import('./chat-ui.js').then(() => {
+                updatePreloaderStatus('Conectando con el servidor...');
+                
+                // Esperar un momento para que Vue se inicialice
+                setTimeout(() => {
+                    updatePreloaderStatus('¡Listo!');
+                    setTimeout(() => {
+                        hidePreloader();
+                        console.log('✅ Frontend cargado correctamente');
+                    }, 800);
+                }, 1200);
+                
+            }).catch(error => {
+                console.error('❌ Error al importar el frontend:', error);
+                showLoadError(`Error de importación: ${error.message}`);
+            });
+            
+        } catch (error) {
+            console.error('❌ Error al cargar el frontend:', error);
+            showLoadError(`Error de inicialización: ${error.message}`);
+        }
+        
+        // Manejo de errores no capturados
+        window.addEventListener('error', (event) => {
+            console.error('❌ Error no capturado:', event.error);
+            if (!preloaderHidden) {
+                showLoadError(`Error de ejecución: ${event.error?.message || 'Error desconocido'}`);
+            }
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('❌ Promesa rechazada no manejada:', event.reason);
+            if (!preloaderHidden) {
+                showLoadError(`Error de conexión: ${event.reason?.message || 'No se pudo conectar con el servidor'}`);
+            }
+        });
+        
+        // Información del frontend en consola
+        console.log('%c🤖 Frontend Chat IA v1.0.0', 'color: #667eea; font-size: 16px; font-weight: bold;');
+        console.log('%cPowered by Adaptiera Team', 'color: #764ba2; font-size: 12px;');
+    </script>
+</body>
+</html> 
