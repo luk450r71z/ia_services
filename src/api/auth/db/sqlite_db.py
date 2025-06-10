@@ -77,17 +77,7 @@ def init_db():
         )
         """)
 
-        # Verificar si la tabla conversation_response existe
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_response (
-            id_session TEXT,
-            id_question INTEGER,
-            question TEXT,
-            response TEXT,
-            datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (id_session) REFERENCES sessions(id_session)
-        )
-        """)
+
 
         conn.commit()
         conn.close()
@@ -283,47 +273,7 @@ def update_session_db(session_id: str, type_value: str, status: str, content: di
         if conn:
             conn.close()
 
-def save_conversation_response(session_id: str, id_question: int, question: str, response: str):
-    """
-    Guarda una respuesta de conversación en la base de datos
-    
-    Args:
-        session_id: ID de la sesión
-        id_question: ID de la pregunta
-        question: Texto de la pregunta
-        response: Respuesta del usuario
-    
-    Returns:
-        bool: True si se guardó exitosamente, False en caso contrario
-    """
-    logger.info(f"Guardando respuesta de conversación para sesión: {session_id}, pregunta {id_question}")
-    conn = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
 
-        cursor.execute("""
-        INSERT INTO conversation_response (id_session, id_question, question, response, datetime)
-        VALUES (?, ?, ?, ?, ?)
-        """, (session_id, id_question, question, response, datetime.utcnow().isoformat()))
-        
-        conn.commit()
-        logger.info(f"Respuesta de conversación guardada exitosamente para sesión {session_id}")
-        return True
-
-    except sqlite3.Error as e:
-        logger.error(f"Error de base de datos al guardar respuesta: {e}")
-        if conn:
-            conn.rollback()
-        return False
-    except Exception as e:
-        logger.error(f"Error inesperado al guardar respuesta: {e}")
-        if conn:
-            conn.rollback()
-        return False
-    finally:
-        if conn:
-            conn.close()
 
 # Initialize database when module is imported
 init_db() 

@@ -7,35 +7,49 @@ from .models.schemas import InitiateServiceRequest, InitiateServiceResponse, Ser
 from .websocket_manager import websocket_manager
 # Importar servicios
 from .services.session_service import SessionService
-from .services.agent_service import AgentService
-from .services.websocket_service import WebSocketService
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
 
-# Configurar agentes al cargar el módulo
-AgentService.setup_questionnarie_agent(websocket_manager)
-
 
 
 @chat_router.post("/questionnarie/initiate", response_model=InitiateServiceResponse)
 async def initiate_questionnarie(request: InitiateServiceRequest):
     """
-    Inicializar un cuestionario obteniendo toda la información de la BD.
+    Inicializar un cuestionario con configuración de sesión.
     
     Controles:
     - Verificar tiempo de expiración (5 minutos)  
     - Verificar status de sesión (debe estar en 'new')
+    - Actualizar sesión con configuración proporcionada
     - Obtener content y configs de la BD
     """
     session_id = request.id_session
+    service_type = "questionnarie"  # Tipo implícito en el endpoint
     
     try:
-        # Usar servicio para inicializar la sesión
+        # Actualizar la sesión con la configuración proporcionada
+        if request.content or request.configs:
+            from auth.db.sqlite_db import update_session_db
+            
+            # Obtener sesión actual para preservar datos existentes
+            session_current = SessionService.validate_session_for_initiate(session_id)
+            
+            # Actualizar con nueva configuración
+            update_session_db(
+                session_id=session_id,
+                type_value=service_type,  # Usar tipo fijo
+                status=session_current.get('status', 'new'),
+                content=request.content or session_current.get('content', {}),
+                configs=request.configs or session_current.get('configs', {})
+            )
+            logger.info(f"Sesión {session_id} actualizada con nueva configuración")
+        
+        # Usar servicio para inicializar la sesión en la base de datos
         session_data = SessionService.initiate_session(session_id)
-        service_type = session_data.get('type')
         
         logger.info(f"Servicio '{service_type}' iniciado exitosamente para sesión: {session_id}")
         
@@ -109,19 +123,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         # Marcar sesión como iniciada usando servicio
         SessionService.start_session(session_id, session_data)
         
-        # Conectar WebSocket
-        await websocket_manager.connect(websocket, session_id)
-        logger.info(f"✅ WebSocket conectado para sesión: {session_id}")
+        # Conectar WebSocket e inicializar agente
+        await websocket_manager.connect_and_initialize(websocket, session_id, session_data)
+        logger.info(f"✅ WebSocket conectado e inicializado para sesión: {session_id}")
         
-        # Inicializar agente usando servicio
-        await WebSocketService.initialize_agent_and_send_welcome(
-            websocket_manager, session_id, session_data
-        )
-        
-        # Manejar comunicación usando servicio
-        await WebSocketService.handle_message_loop(
-            websocket_manager, websocket, session_id
-        )
+        # Manejar comunicación completa
+        await websocket_manager.handle_connection_lifecycle(websocket, session_id)
                     
     except WebSocketDisconnect:
         logger.info(f"🔌 Cliente desconectado de sesión: {session_id}")

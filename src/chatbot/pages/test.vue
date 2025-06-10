@@ -29,9 +29,7 @@
         ✅ Sesión iniciada correctamente
       </div>
       <ChatWidget 
-        :session-id="chatSession.id"
         :websocket_url="chatSession.websocketUrl"
-        :service-type="config.type"
         @conversation-complete="onConversationComplete"
       />
     </div>
@@ -68,7 +66,6 @@ const error = ref('')
 
 // Estado de sesión consolidado
 const chatSession = reactive({
-  id: '',
   websocketUrl: '',
   isActive: false,
   completed: false
@@ -94,7 +91,6 @@ const iniciarConversacion = async () => {
     const questions = await getQuestions()
     const sessionData = await createAndInitializeSession(questions)
     
-    chatSession.id = sessionData.id_session
     chatSession.websocketUrl = sessionData.urls?.websocket_url
     
     if (!chatSession.websocketUrl) {
@@ -111,31 +107,25 @@ const iniciarConversacion = async () => {
 
 // Función unificada para crear e inicializar sesión
 const createAndInitializeSession = async (questions) => {
-  // Paso 1: Crear sesión
+  // Paso 1: Autenticación (solo credenciales)
   const credentials = btoa(`${config.credentials.user}:${config.credentials.password}`)
   
   const authResponse = await fetch(`${config.apiBase}/api/chat/session/auth`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      type: config.type,
-      content: { questions },
-      configs: config.configs
-    })
+      'Authorization': `Basic ${credentials}`
+    }
   })
   
   if (!authResponse.ok) {
     const errorText = await authResponse.text()
-    throw new Error(`Error al crear sesión: ${authResponse.status} - ${errorText}`)
+    throw new Error(`Error al autenticar: ${authResponse.status} - ${errorText}`)
   }
   
   const authData = await authResponse.json()
   
-  // Paso 2: Inicializar servicio
+  // Paso 2: Inicializar servicio con configuración de sesión
   const initResponse = await fetch(`${config.apiBase}/api/chat/${config.type}/initiate`, {
     method: 'POST',
     headers: {
@@ -143,7 +133,9 @@ const createAndInitializeSession = async (questions) => {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      id_session: authData.id_session
+      id_session: authData.id_session,
+      content: { questions },
+      configs: config.configs
     })
   })
   
@@ -158,7 +150,6 @@ const createAndInitializeSession = async (questions) => {
 // Función para manejar finalización del chat
 const onConversationComplete = () => {
   chatSession.isActive = false
-  chatSession.id = ''
   chatSession.websocketUrl = ''
   chatSession.completed = true
   error.value = ''

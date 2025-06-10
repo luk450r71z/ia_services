@@ -29,24 +29,4 @@ conn.close()
 print("✅ Base de datos creada exitosamente")
 
 
-# Conectar nuevamente para crear la tabla de conversaciones
-conn = sqlite3.connect('envs/data/sessions.db')
-cursor = conn.cursor()
 
-# Crear tabla de respuestas de conversación
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS conversation_response (
-    id_session TEXT,
-    id_question INTEGER,
-    question TEXT,
-    response TEXT,
-    datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_session) REFERENCES sessions(id_session)
-)
-''')
-
-# Guardar cambios y cerrar conexión
-conn.commit()
-conn.close()
-
-print("✅ Tabla conversation_response creada exitosamente")

@@ -48,17 +48,9 @@
   export default {
     name: 'ChatWidget',
     props: {
-      sessionId: {
-        type: String,
-        required: true
-      },
       websocket_url: {
         type: String,
         required: true
-      },
-      serviceType: {
-        type: String,
-        default: 'questionnarie'
       }
     },
     data() {
@@ -88,7 +80,7 @@
       }
     },
     mounted() {
-      console.log(`🚀 ChatWidget montado con sessionId: ${this.sessionId}`);
+      console.log(`🚀 ChatWidget montado para URL: ${this.websocket_url}`);
       this.connectWebSocket();
     },
     beforeUnmount() {

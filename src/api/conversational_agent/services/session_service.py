@@ -77,10 +77,8 @@ class SessionService:
             )
             raise ValueError(f"Sesión expirada. Máximo 5 minutos desde la creación")
         
-        # Verificar que tenga contenido válido
-        content = session.get('content', {})
-        if not content or not isinstance(content, dict):
-            raise ValueError("La sesión debe tener content válido")
+        # El contenido se validará en el endpoint de inicialización
+        # No es necesario que esté presente en este punto
             
         return session
     

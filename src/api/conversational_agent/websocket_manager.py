@@ -1,6 +1,7 @@
 from fastapi import WebSocket
-from typing import Dict
+from typing import Dict, Any
 import logging
+import json
 
 from .models.schemas import WebSocketMessage
 from .services.conversation_service import ConversationService, AgentManager
@@ -15,10 +16,6 @@ class WebSocketManager:
         self.active_connections: Dict[str, WebSocket] = {}
         # Delegación a AgentManager
         self.agent_manager = AgentManager()
-    
-    def register_agent_factory(self, agent_type: str, factory_func: callable):
-        """Delegación a AgentManager"""
-        self.agent_manager.register_agent_factory(agent_type, factory_func)
     
     async def connect(self, websocket: WebSocket, session_id: str):
         """
@@ -100,6 +97,71 @@ class WebSocketManager:
     def get_welcome_message(self, session_id: str) -> str:
         """Delega mensaje de bienvenida a AgentManager"""
         return self.agent_manager.get_welcome_message(session_id)
+    
+    async def connect_and_initialize(self, websocket: WebSocket, session_id: str, session_data: Dict[str, Any] = None):
+        """
+        Conecta WebSocket e inicializa agente con mensaje de bienvenida
+        """
+        await self.connect(websocket, session_id)
+        await self._initialize_agent_and_send_welcome(session_id, session_data or {})
+    
+    async def _initialize_agent_and_send_welcome(self, session_id: str, session_data: Dict[str, Any]):
+        """
+        Inicializa agente y envía mensaje de bienvenida (método privado)
+        """
+        try:
+            agent_initialized = await self.initialize_agent(session_id, session_data)
+            if agent_initialized:
+                welcome_message = self.get_welcome_message(session_id)
+                if welcome_message:
+                    await self.send_message(
+                        session_id,
+                        "agent_response", 
+                        welcome_message,
+                        {"is_welcome": True}
+                    )
+                    logger.info(f"📨 Mensaje de bienvenida enviado a sesión: {session_id}")
+            else:
+                logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {session_id}")
+        except Exception as e:
+            logger.error(f"❌ Error inicializando agente: {str(e)}")
+    
+    async def handle_connection_lifecycle(self, websocket: WebSocket, session_id: str):
+        """
+        Maneja todo el ciclo de vida de la conexión WebSocket
+        """
+        try:
+            while True:
+                message_data = await websocket.receive_text()
+                logger.debug(f"📨 Mensaje recibido de {session_id}: {message_data[:100]}...")
+                
+                try:
+                    message_json = json.loads(message_data)
+                    user_message = message_json.get('content', '').strip()
+                    
+                    if user_message:
+                        await self.handle_user_message(session_id, user_message)
+                    else:
+                        logger.warning(f"⚠️ Mensaje vacío de sesión: {session_id}")
+                        
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Error JSON de sesión {session_id}: {str(e)}")
+                    await self.send_message(
+                        session_id, 
+                        "error", 
+                        "Formato inválido. Usa: {\"content\": \"tu mensaje\"}"
+                    )
+                except Exception as e:
+                    logger.error(f"❌ Error procesando mensaje de sesión {session_id}: {str(e)}")
+                    await self.send_message(
+                        session_id, 
+                        "error", 
+                        f"Error procesando mensaje: {str(e)}"
+                    )
+        except Exception as e:
+            # Desconectar automáticamente en caso de error
+            self.disconnect(session_id)
+            raise
 
 # Instancia global del manager
 websocket_manager = WebSocketManager() 

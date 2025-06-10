@@ -7,6 +7,32 @@ class ServiceType(str, Enum):
     """Tipos de servicios disponibles"""
     QUESTIONNARIE = "questionnarie"
 
+class SessionStatus(str, Enum):
+    """Estados posibles de una sesión"""
+    NEW = "new"
+    INITIATED = "initiated"
+    STARTED = "started"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+
+class QuestionnaireResponse(BaseModel):
+    """Response for questionnaire answers"""
+    session_id: str
+    question: str
+    answer: str
+    question_number: int
+    total_questions: int
+    timestamp: datetime
+
+class ConversationSummary(BaseModel):
+    """Summary of the entire conversation"""
+    session_id: str
+    service_type: str
+    questions_count: int
+    responses: list[QuestionnaireResponse]
+    completion_time: datetime
+    status: SessionStatus
+
 class WebSocketMessageType(str, Enum):
     """Tipos de mensajes WebSocket"""
     USER_MESSAGE = "user_message"
@@ -38,8 +64,10 @@ class ChatSession(BaseModel):
 
 # Esquemas para servicios conversacionales
 class InitiateServiceRequest(BaseModel):
-    """Request model for service initiation"""
+    """Request model for service initiation with session configuration"""
     id_session: str = Field(..., min_length=1)
+    content: Optional[Dict[str, Any]] = None
+    configs: Optional[Dict[str, Any]] = None
 
 class ServiceUrls(BaseModel):
     """URLs for service access"""

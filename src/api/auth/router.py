@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
@@ -14,21 +15,13 @@ auth_router = APIRouter(tags=["Authentication"])
 # HTTP Basic Auth security
 security = HTTPBasic()
 
-from typing import Optional, Dict, Any
-from pydantic import BaseModel
-
-class SessionConfigRequest(BaseModel):
-    type: Optional[str] = None
-    content: Optional[Dict[str, Any]] = None
-    configs: Optional[Dict[str, Any]] = None
-
 @auth_router.post("/session/auth")
 async def create_session(
-    session_config: Optional[SessionConfigRequest] = None,
     credentials: HTTPBasicCredentials = Depends(security)
 ) -> dict:
     """
     Crear una nueva sesión usando HTTP Basic Auth.
+    Solo maneja autenticación - la configuración se envía al endpoint de inicialización.
     
     Returns:
         dict: {"id_session": str}
@@ -49,14 +42,9 @@ async def create_session(
     
     logger.info(f"Usuario {username} autenticado exitosamente")
     
-    # Crear sesión usando el servicio
+    # Crear sesión básica usando el servicio (solo con credenciales)
     try:
-        session = AuthService.create_user_session(
-            username=username,
-            session_type=session_config.type if session_config else None,
-            content=session_config.content if session_config else None,
-            configs=session_config.configs if session_config else None
-        )
+        session = AuthService.create_user_session(username=username)
         
         return {"id_session": session['id_session']}
         
