@@ -56,8 +56,7 @@ async def initiate_questionnarie(request: InitiateServiceRequest):
         # Crear respuesta con URLs
         urls = ServiceUrls(
             websocket_url=f"ws://localhost:8000/api/chat/questionnarie/start/{session_id}",
-            api_base_url="http://localhost:8000",
-            webui_url="http://localhost:3000/"
+            webui_url=f"http://localhost:8080?session_id={session_id}"
         )
         
         return InitiateServiceResponse(
@@ -106,7 +105,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     
     try:
         # Validación usando servicio
-        session_data = SessionService.validate_session_for_websocket(session_id)
+        session_data = SessionService.validate_session_for_start(session_id)
         
         if not session_data:
             logger.warning(f"❌ Sesión inválida o expirada: {session_id}")

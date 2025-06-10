@@ -72,7 +72,6 @@ class InitiateServiceRequest(BaseModel):
 class ServiceUrls(BaseModel):
     """URLs for service access"""
     websocket_url: str = Field(..., min_length=1)
-    api_base_url: str = Field(..., min_length=1)
     webui_url: str = Field(..., min_length=1)
 
 class InitiateServiceResponse(BaseModel):

@@ -10,7 +10,7 @@ class SessionService:
     """Servicio para manejar operaciones de sesiones"""
     
     @staticmethod
-    def validate_session_for_websocket(session_id: str) -> Optional[Dict[str, Any]]:
+    def validate_session_for_start(session_id: str) -> Optional[Dict[str, Any]]:
         """
         Valida sesión para WebSocket con lógica mínima
         
@@ -134,4 +134,63 @@ class SessionService:
                 content=content,
                 configs=session_data.get('configs', {})
             )
-            logger.info(f"✅ Sesión {session_id} actualizada a 'started'") 
+            logger.info(f"✅ Sesión {session_id} actualizada a 'started'")
+
+    @staticmethod
+    def get_session(session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene los datos de una sesión
+        
+        Args:
+            session_id: ID de la sesión
+            
+        Returns:
+            Dict con datos de sesión o None si no existe
+        """
+        return get_session_db(session_id)
+    
+    @staticmethod
+    def complete_session_with_summary(session_id: str, conversation_summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Finaliza una sesión agregando el resumen de conversación
+        
+        Args:
+            session_id: ID de la sesión
+            conversation_summary: Resumen de la conversación
+            
+        Returns:
+            Dict con datos de sesión actualizada o None si hay error
+        """
+        try:
+            logger.info(f"📝 Finalizando sesión {session_id} con resumen...")
+            
+            # Obtener sesión actual
+            session_data = get_session_db(session_id)
+            if not session_data:
+                logger.error(f"❌ No se pudo obtener datos de sesión: {session_id}")
+                return None
+            
+            # Actualizar content con resumen
+            original_content = session_data.get('content', {})
+            final_content = original_content.copy()
+            final_content["summary"] = conversation_summary
+            
+            # Actualizar estado en BD
+            updated_session = update_session_db(
+                session_id=session_id,
+                type_value=session_data.get('type', 'unknown'),
+                status="complete",
+                content=final_content,
+                configs=session_data.get('configs', {})
+            )
+            
+            if updated_session:
+                logger.info(f"✅ Sesión finalizada: {session_id}")
+                return updated_session
+            else:
+                logger.warning(f"⚠️ No se pudo actualizar estado de sesión: {session_id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error finalizando sesión {session_id}: {str(e)}")
+            return None 
