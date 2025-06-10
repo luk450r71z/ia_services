@@ -252,3 +252,204 @@ Para soporte y preguntas:
 ---
 
 **Desarrollado con ❤️ usando FastAPI, Vue.js y Vite**
+
+# IA Services Microservices Deployment
+
+Este proyecto implementa una solución basada en microservicios para el sistema IA Services, consistiendo en:
+
+1. **IA Services API** (`ia_services`): Backend que proporciona endpoints para autenticación y gestión de cuestionarios.
+2. **IA Chatbot** (`ia_chatbot`): Frontend basado en Vue.js que consume los servicios del API.
+
+## Estructura del Proyecto
+
+```
+.
+├── envs/                  # Configuración y scripts para despliegue
+│   ├── data/              # Volumen para persistencia (contiene sessions.db)
+│   ├── docker-compose.yml # Orquestación de contenedores
+│   ├── start.sh           # Script para iniciar servicios
+│   ├── stop.sh            # Script para detener servicios
+│   ├── logs.sh            # Script para ver logs
+│   ├── status.sh          # Script para verificar estado
+│   ├── health_check.sh    # Script para verificación de salud
+│   ├── run_tests.sh       # Script para ejecutar todas las pruebas
+│   ├── deploy_with_tests.sh  # Script para despliegue con pruebas integradas
+│   ├── ci_test.sh         # Script para pruebas en entornos CI/CD
+│   └── integration_test.sh   # Script para pruebas de integración
+├── src/
+│   ├── api/               # Servicio de API (FastAPI)
+│   │   ├── main.py        # Punto de entrada
+│   │   ├── Dockerfile     # Configuración para contenedor
+│   │   ├── requirements.txt # Dependencias
+│   │   └── tests/         # Pruebas del API
+│   └── chatbot/           # Servicio de Chatbot (Vue.js)
+│       ├── Dockerfile     # Configuración para contenedor
+│       ├── package.json   # Dependencias
+│       └── tests/         # Pruebas del Chatbot
+```
+
+## Requisitos
+
+- Docker y Docker Compose
+- Git
+- Python 3.9+
+- Node.js 16+
+- Bash (para scripts de prueba y despliegue)
+
+## Endpoints del API
+
+- `POST /api/chat/session/auth` - Crear sesión
+- `POST /api/chat/questionnarie/initiate` - Iniciar cuestionario
+- `POST /api/chat/questionnarie/start` - Comenzar cuestionario
+
+## Despliegue con Pruebas Integradas
+
+### Método recomendado: Despliegue automatizado con pruebas
+
+Ejecuta el script de despliegue con pruebas integradas:
+
+```bash
+cd envs
+bash deploy_with_tests.sh
+```
+
+Este script realiza las siguientes acciones:
+1. Ejecuta las pruebas unitarias del API
+2. Ejecuta las pruebas unitarias del Chatbot
+3. Construye las imágenes Docker
+4. Detiene los servicios existentes
+5. Inicia los nuevos servicios
+6. Verifica que los servicios estén funcionando correctamente
+
+### Pruebas de integración
+
+Para ejecutar solo las pruebas de integración en un entorno ya desplegado:
+
+```bash
+cd envs
+bash integration_test.sh
+```
+
+Este script prueba:
+1. La autenticación y creación de sesión
+2. La inicialización del cuestionario
+3. El inicio del cuestionario
+4. La persistencia de datos en la base de datos
+
+### Pruebas para entornos de CI/CD
+
+Para ejecutar pruebas en un entorno de integración continua:
+
+```bash
+cd envs
+bash ci_test.sh
+```
+
+## Métodos de Despliegue Manual
+
+### Iniciar los servicios
+
+```bash
+cd envs
+docker-compose up -d
+```
+
+### Verificar estado
+
+```bash
+cd envs
+docker-compose ps
+```
+
+### Ver logs
+
+```bash
+cd envs
+docker-compose logs          # Ver logs de todos los servicios
+docker-compose logs ia_services  # Ver logs del servicio API
+docker-compose logs ia_chatbot   # Ver logs del servicio Chatbot
+```
+
+### Verificar salud de los servicios
+
+```bash
+cd envs
+docker-compose exec ia_services curl http://localhost:8000/
+docker-compose exec ia_chatbot wget -qO- http://localhost:80/
+```
+
+### Detener los servicios
+
+```bash
+cd envs
+docker-compose down
+```
+
+## Pruebas Manuales
+
+### Pruebas del API
+
+```bash
+cd src/api
+python -m pytest tests/test_api.py -v
+```
+
+### Pruebas del Chatbot
+
+```bash
+cd src/chatbot
+npm install
+npm test
+```
+
+## Volumen de Datos
+
+Los datos persistentes, incluyendo `sessions.db`, se almacenan en el volumen `envs/data` que se monta en los contenedores.
+
+## Arquitectura
+
+```
+┌────────────────┐     ┌────────────────┐
+│                │     │                │
+│   ia_chatbot   │────▶│   ia_services  │
+│   (Frontend)   │     │   (Backend)    │
+│                │     │                │
+└────────────────┘     └────────┬───────┘
+                                │
+                                ▼
+                        ┌────────────────┐
+                        │                │
+                        │  sessions.db   │
+                        │   (Volumen)    │
+                        │                │
+                        └────────────────┘
+```
+
+## Solución de Problemas
+
+### Error en la prueba del Chatbot con vitest
+
+Si encuentras el error "vitest no se reconoce como un comando", ejecuta:
+
+```bash
+cd src/chatbot
+npm install
+```
+
+### Contenedor en estado unhealthy
+
+Si un contenedor aparece como "unhealthy", verifica los logs:
+
+```bash
+docker logs ia_services
+```
+
+Y asegúrate de que las comprobaciones de salud están configuradas correctamente en `docker-compose.yml`.
+
+### Problemas con los scripts de Bash en Windows
+
+Si estás en Windows y tienes problemas para ejecutar los scripts de Bash, puedes usar:
+
+1. WSL (Windows Subsystem for Linux)
+2. Git Bash
+3. Docker Desktop con WSL2

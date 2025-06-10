@@ -1,0 +1,39 @@
+services:
+  ia_services:
+    build:
+      context: ../src/api
+      dockerfile: Dockerfile
+    container_name: ia_services
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ia_chatbot:
+    build:
+      context: ../src/chatbot
+      dockerfile: Dockerfile
+    container_name: ia_chatbot
+    ports:
+      - "5000:80"
+    depends_on:
+      ia_services:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  data:
+    driver: local
