@@ -1,8 +1,9 @@
 # Framework web y dependencias principales
-fastapi>=0.95.0,<0.104.0
+fastapi==0.115.12
 uvicorn>=0.20.0,<0.24.0
 python-dotenv>=0.21.0,<2.0.0
-starlette>=0.27.0,<0.28.0
+starlette==0.46.2
+httpx>=0.28.0
 
 # Langchain - versiones menos restrictivas
 langchain-groq>=0.0.1
@@ -11,7 +12,6 @@ langchain>=0.0.267
 
 # Testing dependencies - versiones estables conocidas
 pytest>=7.0.0,<8.0.0
-httpx>=0.24.0,<0.25.0
 pytest-cov>=4.0.0,<5.0.0
 
 # Entorno de ejecución

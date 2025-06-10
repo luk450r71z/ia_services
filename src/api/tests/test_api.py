@@ -22,7 +22,7 @@ def test_root_endpoint():
 
 def test_session_auth_endpoint():
     """Test the authentication endpoint with Basic Auth"""
-    # Usar Basic Auth en lugar de JSON para autenticación
+    # Caso 1: Credenciales válidas
     username = "fabian"
     password = "secure_password"
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
@@ -32,7 +32,20 @@ def test_session_auth_endpoint():
     }
     
     response = client.post("/api/chat/session/auth", headers=headers)
-    assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_401_UNAUTHORIZED]
+    assert response.status_code == status.HTTP_200_OK
+    assert "id_session" in response.json()
+    
+    # Caso 2: Credenciales inválidas
+    username = "usuario_invalido"
+    password = "contraseña_incorrecta"
+    credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+    
+    headers = {
+        "Authorization": f"Basic {credentials}"
+    }
+    
+    response = client.post("/api/chat/session/auth", headers=headers)
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
 def test_questionnaire_initiate_endpoint():
     """Test the questionnaire initiation endpoint with proper payload"""
