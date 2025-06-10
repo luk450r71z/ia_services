@@ -96,7 +96,7 @@ def init_db():
         logger.error(f"Error al verificar base de datos: {e}")
         raise
 
-def create_session_db():
+def create_session_db(type_value=None, content=None, configs=None):
     """Create a new session in SQLite database usando el esquema completo"""
     logger.info("Creando nueva sesión en base de datos")
     conn = None
@@ -107,18 +107,22 @@ def create_session_db():
         session_id = str(uuid4())
         created_at = datetime.utcnow().isoformat()
         
+        # Convertir content y configs a JSON si se proporcionan
+        content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
+        configs_json = json.dumps(configs, ensure_ascii=False) if configs else '{}'
+        
         logger.info(f"Insertando sesión con ID: {session_id}")
         cursor.execute("""
         INSERT INTO sessions (id_session, type, created_at, updated_at, status, content, configs)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             session_id,
-            None,  # type por defecto
+            type_value,  # type proporcionado o None
             created_at,
             created_at,  # updated_at igual a created_at inicialmente
             'new',  # status por defecto
-            '{}',  # content por defecto como JSON vacío
-            '{}'  # configs por defecto como JSON vacío
+            content_json,  # content como JSON
+            configs_json  # configs como JSON
         ))
         conn.commit()
 

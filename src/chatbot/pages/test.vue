@@ -3,35 +3,35 @@
     <h1>Chat en Tiempo Real</h1>
     
     <!-- Sección de autenticación -->
-    <div v-if="!isAuthenticated" class="section">
+    <div v-if="!chatSession.isActive" class="section">
       <h2>Autenticación</h2>
       <p>Presiona el botón para iniciar la conversación</p>
       <button 
         @click="iniciarConversacion" 
-        :disabled="isInitializing"
+        :disabled="loading"
         class="start-button"
       >
-        {{ isInitializing ? 'Iniciando...' : 'Iniciar Conversación' }}
+        {{ loading ? 'Iniciando...' : 'Iniciar Conversación' }}
       </button>
       
-      <div v-if="errorMessage" class="error-message">
-        {{ errorMessage }}
+      <div v-if="error" class="error-message">
+        {{ error }}
       </div>
       
-      <div v-if="conversationCompleted" class="completion-message">
+      <div v-if="chatSession.completed" class="completion-message">
         ✅ Conversación completada exitosamente. El chat se ha cerrado.
       </div>
     </div>
     
-    <!-- Sección de Chat Widget (solo se muestra cuando está autenticado) -->
-    <div v-if="isAuthenticated" class="section">
+    <!-- Sección de Chat Widget -->
+    <div v-if="chatSession.isActive" class="section">
       <div class="success-message">
         ✅ Sesión iniciada correctamente
       </div>
       <ChatWidget 
-        :session-id="id_session"
-        :resource_uri="resource_uri"
-        :service-type="SERVICE_CONFIG.type"
+        :session-id="chatSession.id"
+        :websocket_url="chatSession.websocketUrl"
+        :service-type="config.type"
         @conversation-complete="onConversationComplete"
       />
     </div>
@@ -40,127 +40,128 @@
 
 <script setup>
 import ChatWidget from '../components/chatwidget.vue'
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 
-// Estados reactivos
-const isAuthenticated = ref(false)
-const isInitializing = ref(false)
-const errorMessage = ref('')
-const conversationCompleted = ref(false)
-
-// Configuración de la API
-const SERVICE_CONFIG = {
-  password: "secure_password",
-  user: "fabian",
-  type: "questionnarie" // Tipo de servicio configurable
+// Configuración centralizada
+const config = {
+  apiBase: 'http://localhost:8000',
+  credentials: {
+    user: 'fabian',
+    password: 'secure_password'
+  },
+  type: 'questionnarie',
+  defaultQuestions: [
+    "¿Cuáles son tus principales fortalezas técnicas?",
+    "¿Por qué te interesa trabajar en esta posición?",
+    "¿Tienes alguna pregunta para nosotros?"
+  ],
+  configs: {
+    webhook_url: "",
+    email: ["santiago.ferrero@adaptiera.team", "lucas.ortiz@adaptiera.team"],
+    avatar: false,
+  }
 }
 
-// Preguntas cargadas desde JSON
-const preguntasPersonalizadas = ref([])
+// Estados simplificados
+const loading = ref(false)
+const error = ref('')
 
-// ID de sesión se generará dinámicamente en la autenticación
-const id_session = ref('') // Se llenará después de la autenticación
-const resource_uri = ref('') // Se establecerá durante la inicialización
+// Estado de sesión consolidado
+const chatSession = reactive({
+  id: '',
+  websocketUrl: '',
+  isActive: false,
+  completed: false
+})
 
-// Función para cargar preguntas
-const cargarPreguntas = async () => {
+// Función simplificada para obtener preguntas
+const getQuestions = async () => {
   try {
     const response = await fetch('/questions.json')
-    if (!response.ok) throw new Error(`Error ${response.status}`)
-    preguntasPersonalizadas.value = await response.json()
-  } catch (error) {
-    preguntasPersonalizadas.value = [
-      "¿Cuáles son tus principales fortalezas técnicas?",
-      "¿Por qué te interesa trabajar en esta posición?",
-      "¿Tienes alguna pregunta para nosotros?"
-    ]
+    return response.ok ? await response.json() : config.defaultQuestions
+  } catch {
+    return config.defaultQuestions
   }
 }
 
-// Función principal para iniciar conversación
+// Función principal simplificada
 const iniciarConversacion = async () => {
-  errorMessage.value = ''
-  conversationCompleted.value = false
-  isInitializing.value = true
+  error.value = ''
+  chatSession.completed = false
+  loading.value = true
   
   try {
-    const sessionId = await obtenerToken()
-    await cargarPreguntas()
-    const serviceData = await inicializarServicio(sessionId)
-
-    id_session.value = sessionId
-    resource_uri.value = serviceData.urls?.resource_uri
+    const questions = await getQuestions()
+    const sessionData = await createAndInitializeSession(questions)
     
-    if (!resource_uri.value) {
-      throw new Error('No se pudo obtener resource_uri')
+    chatSession.id = sessionData.id_session
+    chatSession.websocketUrl = sessionData.urls?.websocket_url
+    
+    if (!chatSession.websocketUrl) {
+      throw new Error('No se pudo obtener websocket_url')
     }
     
-    isAuthenticated.value = true
-  } catch (error) {
-    errorMessage.value = error.message || 'Error en la inicialización'
+    chatSession.isActive = true
+  } catch (err) {
+    error.value = err.message || 'Error en la inicialización'
   } finally {
-    isInitializing.value = false
+    loading.value = false
   }
 }
 
-// Función para obtener el token (Paso 1)
-const obtenerToken = async () => {
-  const credentials = btoa(`${SERVICE_CONFIG.user}:${SERVICE_CONFIG.password}`)
+// Función unificada para crear e inicializar sesión
+const createAndInitializeSession = async (questions) => {
+  // Paso 1: Crear sesión
+  const credentials = btoa(`${config.credentials.user}:${config.credentials.password}`)
   
-  const response = await fetch(`http://localhost:8000/api/chat/session/auth`, {
+  const authResponse = await fetch(`${config.apiBase}/api/chat/session/auth`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
-      'Authorization': `Basic ${credentials}`
-    }
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      type: config.type,
+      content: { questions },
+      configs: config.configs
+    })
   })
   
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Error al obtener token: ${response.status} - ${errorText}`)
+  if (!authResponse.ok) {
+    const errorText = await authResponse.text()
+    throw new Error(`Error al crear sesión: ${authResponse.status} - ${errorText}`)
   }
   
-  const data = await response.json()
-  return data.id_session
-}
-
-// Función para inicializar servicio con preguntas (Paso 2)
-const inicializarServicio = async (sessionId) => {
-  const response = await fetch(`http://localhost:8000/api/chat/${SERVICE_CONFIG.type}/initiate`, {
+  const authData = await authResponse.json()
+  
+  // Paso 2: Inicializar servicio
+  const initResponse = await fetch(`${config.apiBase}/api/chat/${config.type}/initiate`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      id_session: sessionId,
-      type: SERVICE_CONFIG.type,
-      content: {
-        questions: preguntasPersonalizadas.value
-      },
-      configs: {
-        "webhook_url": "",
-        "email": ["lucasd@gmail.com", "santiago.ferrero@adaptiera.com"],
-        "avatar": false,
-      }
+      id_session: authData.id_session
     })
   })
   
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Error al inicializar servicio: ${response.status} - ${errorText}`)
+  if (!initResponse.ok) {
+    const errorText = await initResponse.text()
+    throw new Error(`Error al inicializar servicio: ${initResponse.status} - ${errorText}`)
   }
   
-  return await response.json()
+  return await initResponse.json()
 }
 
-// Funciones para manejar eventos del ChatWidget
+// Función para manejar finalización del chat
 const onConversationComplete = () => {
-  isAuthenticated.value = false
-  id_session.value = ''
-  resource_uri.value = ''
-  errorMessage.value = ''
-  conversationCompleted.value = true
+  chatSession.isActive = false
+  chatSession.id = ''
+  chatSession.websocketUrl = ''
+  chatSession.completed = true
+  error.value = ''
 }
 </script>
 

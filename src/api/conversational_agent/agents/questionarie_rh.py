@@ -6,7 +6,6 @@ import datetime
 import json
 
 from ..models.conversation_models import ConversationState
-from .tools.email_tool import simulate_email_send_direct
 from ..utils.env_utils import load_env_variables
 
 # Cargar variables de entorno al importar el módulo
@@ -412,22 +411,17 @@ Siguiente pregunta:
         self.state.conversation_complete = True
         self.state.current_question = None
         
-        # Enviar correo
-        email_success = simulate_email_send_direct(self.state.user_responses)
+        # Las notificaciones ahora se manejan automáticamente por el websocket_manager
+        # cuando la conversación se marca como completa - no necesitamos envío manual aquí
         
-        if email_success:
-            final_message = AIMessage(content="""¡Muchas gracias por tu tiempo! 
+        final_message = AIMessage(content="""¡Muchas gracias por tu tiempo! 
 
 ✅ Tus respuestas han sido guardadas correctamente
-✅ Se ha enviado un resumen por correo electrónico
+✅ Se enviarán notificaciones automáticamente (si están configuradas)
 
 Nuestro equipo de RRHH revisará tu información y se pondrá en contacto contigo pronto.
 
 ¡Que tengas un excelente día!""")
-        else:
-            final_message = AIMessage(content="""Gracias por completar la entrevista. 
-Hubo algunos problemas técnicos al procesar tu información, 
-pero nuestro equipo se pondrá en contacto contigo pronto.""")
         
         self.state.messages.append(final_message)
         return final_message.content

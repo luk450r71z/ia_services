@@ -30,8 +30,12 @@
         </button>
       </div>
       
-      <div v-if="!isConnected" class="connection-status">
+      <div v-if="connectionState === 'connecting'" class="connection-status">
         Conectando al servidor...
+      </div>
+      
+      <div v-if="connectionState === 'reconnecting'" class="connection-status">
+        Reintentando conexión...
       </div>
       
       <div v-if="conversationCompleted" class="completion-status">
@@ -46,41 +50,31 @@
     props: {
       sessionId: {
         type: String,
-        default: 'default-session'
+        required: true
       },
-      resource_uri: {
+      websocket_url: {
         type: String,
         required: true
       },
       serviceType: {
         type: String,
-        default: 'auto'
+        default: 'questionnarie'
       }
     },
     data() {
       return {
         ws: null,
-        isConnected: false,
         userInput: '',
         messages: [],
-        conversationCompleted: false
+        conversationCompleted: false,
+        connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected', 'reconnecting'
+        reconnectAttempts: 0,
+        maxReconnectAttempts: 3
       }
     },
     computed: {
-      apiBaseUrl() {
-        if (this.resource_uri) {
-          try {
-            const url = new URL(this.resource_uri);
-            return `${url.protocol}//${url.host}`;
-          } catch (error) {
-            console.error('❌ Error extrayendo base URL:', error);
-            return 'http://127.0.0.1:8000';
-          }
-        }
-        return 'http://127.0.0.1:8000';
-      },
       canSendMessage() {
-        return this.isConnected && !this.conversationCompleted;
+        return this.connectionState === 'connected' && !this.conversationCompleted;
       },
       inputPlaceholder() {
         return this.conversationCompleted 
@@ -89,129 +83,85 @@
       },
       buttonText() {
         if (this.conversationCompleted) return 'Finalizado';
-        return this.isConnected ? 'Enviar' : 'Conectando...';
+        if (this.connectionState === 'connected') return 'Enviar';
+        return 'Conectando...';
       }
     },
-    async mounted() {
+    mounted() {
       console.log(`🚀 ChatWidget montado con sessionId: ${this.sessionId}`);
-      
-      const started = await this.startConversationalService();
-      if (!started) {
-        this.addMessage('system', 'No se pudo iniciar el servicio conversacional. Por favor, recarga la página.');
-      }
+      this.connectWebSocket();
     },
     beforeUnmount() {
       this.disconnectWebSocket();
     },
     methods: {
-      async startConversationalService() {
-        try {
-          console.log(`🚀 Iniciando servicio conversacional para sesión: ${this.sessionId}`);
-          
-          const serviceType = await this.getServiceType();
-          
-          const response = await fetch(this.resource_uri, {
-            method: 'POST',
-            headers: {
-              'accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              id_session: this.sessionId,
-              type: serviceType
-            })
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Error al iniciar servicio: ${response.status} - ${errorText}`);
-          }
-          
-          const data = await response.json();
-          console.log('✅ Servicio conversacional iniciado correctamente');
-          
-          if (data.websocket_endpoint) {
-            this.connectWebSocket(data.websocket_endpoint);
-            return true;
-          } else {
-            this.addMessage('system', 'Error: No se pudo obtener el endpoint WebSocket del servicio');
-            return false;
-          }
-          
-        } catch (error) {
-          console.error('❌ Error iniciando servicio:', error);
-          this.addMessage('system', `Error al iniciar servicio conversacional: ${error.message}`);
-          return false;
+      connectWebSocket() {
+        if (!this.websocket_url) {
+          this.addMessage('system', 'Error: URL de WebSocket no proporcionada');
+          return;
         }
-      },
-      
-      async getServiceType() {
-        if (this.serviceType && this.serviceType !== 'auto') {
-          return this.serviceType;
-        }
+
+        this.connectionState = 'connecting';
+        console.log(`🔗 Conectando a WebSocket:`, this.websocket_url);
         
         try {
-          const sessionUrl = `${this.apiBaseUrl}/api/chat/session/${this.sessionId}`;
-          const response = await fetch(sessionUrl, {
-            method: 'GET',
-            headers: { 'accept': 'application/json' }
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Error HTTP ${response.status}: No se pudo obtener información de la sesión`);
-          }
-          
-          const sessionData = await response.json();
-          if (!sessionData.type) {
-            throw new Error('La sesión no tiene un tipo de servicio definido');
-          }
-          
-          return sessionData.type;
-          
-        } catch (error) {
-          console.error(`❌ Error obteniendo tipo de servicio:`, error);
-          throw error;
-        }
-      },
-      
-      connectWebSocket(wsUrl) {
-        try {
-          console.log('🔗 Conectando a WebSocket:', wsUrl);
-          
-          this.ws = new WebSocket(wsUrl);
+          this.ws = new WebSocket(this.websocket_url);
           
           this.ws.onopen = () => {
             console.log('✅ Conectado al agente');
-            this.isConnected = true;
+            this.connectionState = 'connected';
+            this.reconnectAttempts = 0;
           };
           
           this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            this.handleWebSocketMessage(data);
+            try {
+              const data = JSON.parse(event.data);
+              this.handleWebSocketMessage(data);
+            } catch (error) {
+              console.error('❌ Error parsing message:', error);
+            }
           };
           
           this.ws.onclose = (event) => {
-            console.log('🔌 WebSocket desconectado');
-            this.isConnected = false;
+            console.log('🔌 WebSocket desconectado, código:', event.code);
+            this.connectionState = 'disconnected';
             
-            if (event.code === 403) {
-              this.addMessage('system', 'Error: Acceso denegado al servidor');
-            } else if (!event.wasClean && !this.conversationCompleted) {
-              setTimeout(() => this.connectWebSocket(wsUrl), 3000);
+            // Códigos que NO deben reconectar (errores permanentes)
+            if ([4001, 4004, 403, 401].includes(event.code)) {
+              this.addMessage('system', 'Conexión cerrada por el servidor');
+              return;
+            }
+            
+            // Reconexión automática si la conversación no terminó
+            if (!this.conversationCompleted && this.reconnectAttempts < this.maxReconnectAttempts) {
+              this.attemptReconnect();
+            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+              this.addMessage('system', 'No se pudo restablecer la conexión');
             }
           };
           
           this.ws.onerror = (error) => {
             console.error('❌ Error de WebSocket:', error);
-            this.isConnected = false;
-            this.addMessage('system', 'Error de conexión con el servidor');
+            this.connectionState = 'disconnected';
           };
           
         } catch (error) {
           console.error('❌ Error al conectar WebSocket:', error);
-          this.isConnected = false;
-          this.addMessage('system', `Error al inicializar: ${error.message}`);
+          this.connectionState = 'disconnected';
+          this.addMessage('system', `Error al conectar: ${error.message}`);
         }
+      },
+      
+      attemptReconnect() {
+        this.reconnectAttempts++;
+        this.connectionState = 'reconnecting';
+        
+        const delay = Math.min(2000 * this.reconnectAttempts, 8000); // Delay progresivo
+        console.log(`🔄 Reintentando conexión en ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        
+        setTimeout(() => {
+          this.connectWebSocket();
+        }, delay);
       },
       
       handleWebSocketMessage(data) {
@@ -237,6 +187,7 @@
           this.ws.close();
           this.ws = null;
         }
+        this.connectionState = 'disconnected';
       },
       
       handleSendMessage() {
@@ -247,16 +198,19 @@
         }
         
         const message = this.userInput.trim();
-        if (message && this.isConnected) {
-          this.addMessage('user', message);
-          
-          this.ws.send(JSON.stringify({
-            content: message
-          }));
-          
-          this.userInput = '';
+        if (!message) return;
+        
+        this.addMessage('user', message);
+        
+        if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ content: message }));
           this.$emit('message-sent', message);
+        } else {
+          this.addMessage('system', 'No hay conexión. Reintentando...');
+          this.attemptReconnect();
         }
+        
+        this.userInput = '';
       },
       
       addMessage(role, content) {
@@ -276,10 +230,6 @@
         if (container) {
           container.scrollTop = container.scrollHeight;
         }
-      },
-      
-      clearChat() {
-        this.messages = [];
       }
     }
   }

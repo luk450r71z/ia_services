@@ -40,29 +40,14 @@ class ChatSession(BaseModel):
 class InitiateServiceRequest(BaseModel):
     """Request model for service initiation"""
     id_session: str = Field(..., min_length=1)
-    type: str = Field(..., min_length=1, max_length=50, pattern="^[a-zA-Z_][a-zA-Z0-9_]*$")
-    content: Dict[str, Any]
-    configs: Optional[Dict[str, Any]] = None
 
 class ServiceUrls(BaseModel):
     """URLs for service access"""
-    resource_uri: str = Field(..., min_length=1)
-    webui: str = Field(..., min_length=1)
+    websocket_url: str = Field(..., min_length=1)
+    api_base_url: str = Field(..., min_length=1)
+    webui_url: str = Field(..., min_length=1)
 
 class InitiateServiceResponse(BaseModel):
     """Response model for service initiation"""
     id_session: str
-    urls: ServiceUrls
-
-class StartServiceRequest(BaseModel):
-    """Request model for starting service"""
-    id_session: str = Field(..., min_length=1)
-
-
-class WebSocketServiceResponse(BaseModel):
-    """Simple response model for WebSocket service start"""
-    id_session: str
-    websocket_endpoint: str
-    status: str
-    message: str
-    welcome_message: Optional[str] = None 
+    urls: ServiceUrls 

@@ -1,10 +1,8 @@
 import logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from secrets import compare_digest
 
-from auth.db.database import USERS
-from auth.db.sqlite_db import create_session_db
+from auth.services.auth_service import AuthService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,16 +14,21 @@ auth_router = APIRouter(tags=["Authentication"])
 # HTTP Basic Auth security
 security = HTTPBasic()
 
+from typing import Optional, Dict, Any
+from pydantic import BaseModel
+
+class SessionConfigRequest(BaseModel):
+    type: Optional[str] = None
+    content: Optional[Dict[str, Any]] = None
+    configs: Optional[Dict[str, Any]] = None
+
 @auth_router.post("/session/auth")
-async def create_session(credentials: HTTPBasicCredentials = Depends(security)) -> dict:
+async def create_session(
+    session_config: Optional[SessionConfigRequest] = None,
+    credentials: HTTPBasicCredentials = Depends(security)
+) -> dict:
     """
     Crear una nueva sesión usando HTTP Basic Auth.
-    Valida las credenciales de usuario y contraseña contra la base de datos USERS.
-    
-    Controles:
-    - Verificar credenciales de usuario
-    - Crear nueva sesión con estado 'new'
-    - Establecer valores iniciales
     
     Returns:
         dict: {"id_session": str}
@@ -35,8 +38,8 @@ async def create_session(credentials: HTTPBasicCredentials = Depends(security)) 
 
     logger.info(f"Intento de autenticación para usuario: {username}")
 
-    # Validar credenciales contra el diccionario USERS
-    if username not in USERS or not compare_digest(USERS[username], password):
+    # Validar credenciales usando el servicio
+    if not AuthService.validate_credentials(username, password):
         logger.warning(f"Intento de autenticación inválido para usuario: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -46,17 +49,15 @@ async def create_session(credentials: HTTPBasicCredentials = Depends(security)) 
     
     logger.info(f"Usuario {username} autenticado exitosamente")
     
-    # Crear una nueva sesión en la base de datos
+    # Crear sesión usando el servicio
     try:
-        session = create_session_db()
-        if not session:
-            logger.error("Error al crear sesión - no se retornó sesión")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al crear sesión"
-            )
+        session = AuthService.create_user_session(
+            username=username,
+            session_type=session_config.type if session_config else None,
+            content=session_config.content if session_config else None,
+            configs=session_config.configs if session_config else None
+        )
         
-        logger.info(f"Nueva sesión creada para usuario {username}: {session['id_session']}")
         return {"id_session": session['id_session']}
         
     except Exception as e:
