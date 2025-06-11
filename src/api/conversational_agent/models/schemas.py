@@ -42,6 +42,7 @@ class WebSocketMessageType(str, Enum):
     SYSTEM = "system"
     STATUS = "status"
     TYPING = "typing"
+    UI_CONFIG = "ui_config"
 
 class WebSocketMessage(BaseModel):
     """Modelo para mensajes WebSocket"""

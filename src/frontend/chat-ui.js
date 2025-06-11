@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import ChatUIApp from './src/ChatUIApp.vue'
+import ChatUIApp from './pages/ChatUIApp.vue'
 
 console.log('🤖 Iniciando Chat UI...')
 

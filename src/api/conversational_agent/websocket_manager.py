@@ -83,7 +83,37 @@ class WebSocketManager:
         Conecta WebSocket e inicializa agente con mensaje de bienvenida
         """
         await self.connect(websocket, session_id)
+        
+        # Enviar configuración de UI al frontend
+        await self._send_ui_config(session_id, session_data or {})
+        
         await self._initialize_agent_and_send_welcome(session_id, session_data or {})
+    
+    async def _send_ui_config(self, session_id: str, session_data: Dict[str, Any]):
+        """
+        Envía configuración de UI al frontend (similar a como se obtiene content)
+        """
+        try:
+            configs = session_data.get('configs', {})
+            avatar_enabled = configs.get('avatar', False)
+            
+            logger.info(f"📋 Datos de sesión completos: {session_data}")
+            logger.info(f"⚙️ Configs extraidos: {configs}")
+            logger.info(f"👤 Avatar enabled: {avatar_enabled}")
+            
+            await self.send_message(
+                session_id,
+                "ui_config",
+                "",
+                {
+                    "avatar": avatar_enabled,
+                    "configs": configs
+                }
+            )
+            logger.info(f"✅ Configuración de UI enviada a sesión {session_id}: avatar={avatar_enabled}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error enviando configuración UI a sesión {session_id}: {str(e)}")
     
     async def _initialize_agent_and_send_welcome(self, session_id: str, session_data: Dict[str, Any]):
         """

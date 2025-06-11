@@ -150,6 +150,46 @@ class SessionService:
         return get_session_db(session_id)
     
     @staticmethod
+    def update_session_content(session_id: str, new_content: Dict[str, Any] = None, new_configs: Dict[str, Any] = None, session_type: str = None) -> Dict[str, Any]:
+        """
+        Actualiza el content y configs de una sesión preservando datos existentes
+        
+        Args:
+            session_id: ID de la sesión
+            new_content: Nuevo content a agregar/actualizar
+            new_configs: Nuevos configs a agregar/actualizar
+            session_type: Tipo de sesión (opcional, para establecer el tipo)
+            
+        Returns:
+            Dict con datos de sesión actualizada
+            
+        Raises:
+            ValueError: Si la sesión no es válida
+        """
+        session = SessionService.validate_session_for_initiate(session_id)
+        
+        # Merge simple: existing + new (manejar None correctamente)
+        existing_content = session.get('content') or {}
+        existing_configs = session.get('configs') or {}
+        
+        merged_content = {**existing_content, **(new_content or {})}
+        merged_configs = {**existing_configs, **(new_configs or {})}
+        
+        # Actualizar usando la función existente
+        updated_session = update_session_db(
+            session_id=session_id,
+            type_value=session_type or session.get('type'),
+            status=session.get('status', 'new'),
+            content=merged_content,
+            configs=merged_configs
+        )
+        
+        if not updated_session:
+            raise Exception("Error al actualizar la sesión")
+            
+        return updated_session
+    
+    @staticmethod
     def complete_session_with_summary(session_id: str, conversation_summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Finaliza una sesión agregando el resumen de conversación

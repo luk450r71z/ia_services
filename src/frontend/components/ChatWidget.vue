@@ -51,6 +51,10 @@
       websocket_url: {
         type: String,
         required: true
+      },
+      disabled: {
+        type: Boolean,
+        default: false
       }
     },
     data() {
@@ -66,15 +70,16 @@
     },
     computed: {
       canSendMessage() {
-        return this.connectionState === 'connected' && !this.conversationCompleted;
+        return this.connectionState === 'connected' && !this.conversationCompleted && !this.disabled;
       },
       inputPlaceholder() {
-        return this.conversationCompleted 
-          ? 'La conversación ha finalizado' 
-          : 'Escribe tu respuesta...';
+        if (this.disabled || this.conversationCompleted) {
+          return 'La conversación ha finalizado';
+        }
+        return 'Escribe tu respuesta...';
       },
       buttonText() {
-        if (this.conversationCompleted) return 'Finalizado';
+        if (this.disabled || this.conversationCompleted) return 'Finalizado';
         if (this.connectionState === 'connected') return 'Enviar';
         return 'Conectando...';
       }
@@ -157,6 +162,8 @@
       },
       
       handleWebSocketMessage(data) {
+        console.log('📨 ChatWidget recibió mensaje:', data.type, data);
+        
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
           this.addMessage('agent', data.content);
@@ -166,6 +173,9 @@
             console.log('🔒 Conversación completada en chat-ui');
             this.$emit('conversation-complete', data.data.summary);
           }
+        } else if (data.type === 'ui_config') {
+          console.log('🔧 ChatWidget recibió ui_config:', data);
+          this.$emit('ui-config', data);
         } else if (data.type === 'system') {
           this.addMessage('system', data.content);
         } else if (data.type === 'error') {
@@ -183,7 +193,7 @@
       },
       
       handleSendMessage() {
-        if (this.conversationCompleted) {
+        if (this.disabled || this.conversationCompleted) {
           this.addMessage('system', 'La conversación ha finalizado. No se pueden enviar más mensajes.');
           this.userInput = '';
           return;

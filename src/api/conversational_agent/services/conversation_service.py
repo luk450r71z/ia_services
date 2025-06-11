@@ -57,7 +57,7 @@ class ConversationManager:
             
             # Guardar agente y obtener mensaje de bienvenida
             self.active_agents[session_id] = agent
-            welcome_message = agent.start_conversation()
+            welcome_message = agent.start_conversation(session_data)
             
             logger.info(f"🤖 Conversación inicializada para sesión: {session_id}")
             return welcome_message

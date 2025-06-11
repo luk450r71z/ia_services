@@ -37,7 +37,7 @@
 </template>
 
 <script setup>
-import ChatWidget from '../components/chatwidget.vue'
+import ChatWidget from '../components/ChatWidget.vue'
 import { ref, reactive } from 'vue'
 
 // Configuración centralizada

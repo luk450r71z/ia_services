@@ -4,9 +4,6 @@
     <div v-if="loading" class="loading-section">
       <div class="loading-spinner"></div>
       <h2>{{ loadingMessage }}</h2>
-      <div class="loading-progress">
-        <div class="progress-bar" :style="{ width: loadingProgress + '%' }"></div>
-      </div>
       <p class="connection-info">
         Estado: <span class="status" :class="connectionState">{{ connectionState }}</span>
       </p>
@@ -17,30 +14,56 @@
       <h2>❌ Error de Conexión</h2>
       <p class="error-message">{{ error }}</p>
       <div class="error-actions">
-        <button @click="reiniciarServicio" class="retry-button">
+        <button @click="iniciarChatUI" class="retry-button">
           🔄 Reintentar Conexión
         </button>
-        <p class="retry-info" v-if="retryCount > 0">
-          Intento {{ retryCount }} de {{ config.maxRetries }}
-        </p>
       </div>
     </div>
 
-    <!-- Estado de chat activo -->
-    <div v-else-if="chatSession.isActive" class="chat-section">
+    <!-- Estado de chat activo o completado -->
+    <div v-else-if="chatSession.isActive || chatSession.completed" class="chat-section">
       <div class="header">
-        <h1 class="header-title">🤖 Chat IA</h1>
-        <p class="header-subtitle">Chat UI Independiente - Adaptiera</p>
+        <div class="header-main">
+          <div class="header-text">
+            <h1 class="header-title">🤖 Chat IA</h1>
+            <p class="header-subtitle">Chat UI Independiente - Adaptiera</p>
+          </div>
+          
+          <!-- Avatar independiente del ChatWidget -->
+          <div v-if="showAvatar" class="header-avatar">
+            <Avatar 
+              :name="avatarConfig.name"
+              :src="avatarConfig.url"
+              size="lg"
+            />
+            <span class="avatar-label">{{ avatarConfig.name }}</span>
+          </div>
+        </div>
+        
         <div class="connection-status">
           <span class="status-indicator" :class="connectionState"></span>
-          <span class="status-text">{{ connectionState === 'connected' ? 'Conectado' : 'Conectando...' }}</span>
+          <span class="status-text">
+            {{ chatSession.completed ? 'Conversación Finalizada' : 
+               connectionState === 'connected' ? 'Conectado' : 'Conectando...' }}
+          </span>
+        </div>
+        
+        <!-- DEBUG: Mostrar estado de configuración -->
+        <div class="debug-info">
+          <small>
+            👤 Avatar: {{ showAvatar ? 'ON' : 'OFF' }}
+            {{ avatarConfig.url ? ` | 🖼️ Con imagen` : ` | 📝 Solo iniciales` }}
+            {{ chatSession.completed ? ' | 🔒 Chat Finalizado' : '' }}
+          </small>
         </div>
       </div>
 
       <ChatWidget 
         :websocket_url="chatSession.websocketUrl"
+        :disabled="chatSession.completed"
         @conversation-complete="onConversationComplete"
         @message-sent="onMessageSent"
+        @ui-config="handleUIConfigMessage"
         class="chat-widget"
       />
 
@@ -48,57 +71,19 @@
         <small>Chat UI sin autenticación | Powered by Adaptiera Team</small>
       </div>
     </div>
-
-    <!-- Estado de conversación completada -->
-    <div v-else-if="chatSession.completed" class="completion-section">
-      <h2>🎉 ¡Conversación Completada!</h2>
-      <div class="stats-card">
-        <h3>📊 Estadísticas de la Conversación</h3>
-        <div v-if="conversationStats" class="stats-grid">
-          <div class="stat-item">
-            <span class="stat-label">Duración:</span>
-            <span class="stat-value">{{ conversationStats.duration }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Mensajes:</span>
-            <span class="stat-value">{{ conversationStats.messageCount }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Finalizado:</span>
-            <span class="stat-value">{{ conversationStats.endTime }}</span>
-          </div>
-        </div>
-      </div>
-      <div class="completion-actions">
-        <button @click="reiniciarServicio" class="restart-button">
-          🔄 Nueva Conversación
-        </button>
-        <button @click="exportarConversacion" class="export-button">
-          📥 Exportar Conversación
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
-import ChatWidget from './components/ChatWidget.vue'
+import ChatWidget from '../components/ChatWidget.vue'
+import Avatar from '../components/Avatar.vue'
 import { ref, reactive, onMounted, computed } from 'vue'
-
-// Configuración específica del chat-ui
-const config = {
-  autoRetry: true,
-  maxRetries: 3,
-  retryDelay: 2000
-}
 
 // Estados del chat-ui
 const loading = ref(false)
 const error = ref('')
-const retryCount = ref(0)
 const connectionState = ref('disconnected')
 const loadingMessage = ref('Preparando conexión...')
-const loadingProgress = ref(0)
 
 // Estado de sesión
 const chatSession = reactive({
@@ -108,16 +93,53 @@ const chatSession = reactive({
   startTime: null
 })
 
-// Estadísticas de conversación
-const conversationStats = ref(null)
 
-// Progreso de carga calculado
-const progressSteps = [
-  { message: 'Preparando conexión...', progress: 20 },
-  { message: 'Obteniendo URL de WebSocket...', progress: 50 },
-  { message: 'Estableciendo conexión...', progress: 80 },
-  { message: '¡Conectado! Esperando primer mensaje...', progress: 100 }
-]
+
+// Configuración de Avatar
+const showAvatar = ref(false)
+const avatarConfig = ref({
+  show: false,
+  url: null,
+  name: 'Asistente IA'
+})
+
+
+
+// Función para obtener session_id de la URL
+const getSessionId = () => {
+  const urlParams = new URLSearchParams(window.location.search)
+  return urlParams.get('session_id') || urlParams.get('id_session')
+}
+
+// Función para configurar avatar desde WebSocket
+const handleUIConfigMessage = (data) => {
+  console.log('📥 ChatUIApp recibió evento ui-config:', data)
+  if (data.type === 'ui_config' && data.data) {
+    const avatarData = data.data.avatar
+    
+    if (typeof avatarData === 'boolean') {
+      // Configuración simple: solo true/false
+      showAvatar.value = avatarData
+      avatarConfig.value.show = avatarData
+      console.log('👤 Avatar:', showAvatar.value ? 'habilitado' : 'deshabilitado')
+    } else if (typeof avatarData === 'object' && avatarData !== null) {
+      // Configuración avanzada: objeto con propiedades
+      showAvatar.value = Boolean(avatarData.show)
+      avatarConfig.value = {
+        show: showAvatar.value,
+        url: avatarData.url || avatarData.image || null,
+        name: avatarData.name || 'Asistente IA'
+      }
+      console.log('👤 Avatar configurado:', avatarConfig.value)
+    } else {
+      showAvatar.value = false
+      avatarConfig.value.show = false
+      console.log('👤 Avatar deshabilitado')
+    }
+  } else {
+    console.log('⚠️ ui_config inválido:', data)
+  }
+}
 
 // Inicialización automática al montar el componente
 onMounted(() => {
@@ -161,69 +183,28 @@ const getWebSocketUrl = () => {
   throw new Error('No se encontró session_id o URL de WebSocket. Proporciona el session_id mediante: ?session_id=... o la URL completa mediante: ?ws_url=...')
 }
 
-// Función para actualizar progreso de carga
-const updateLoadingProgress = (stepIndex) => {
-  if (stepIndex < progressSteps.length) {
-    const step = progressSteps[stepIndex]
-    loadingMessage.value = step.message
-    loadingProgress.value = step.progress
-  }
-}
-
-// Función principal del chat-ui
+// Función principal del chat-ui (simplificada)
 const iniciarChatUI = async () => {
-  if (retryCount.value >= config.maxRetries) {
-    error.value = `Se alcanzó el máximo de intentos (${config.maxRetries}). Verifica la URL del WebSocket.`
-    connectionState.value = 'failed'
-    return
-  }
-
   error.value = ''
-  chatSession.completed = false
   loading.value = true
   connectionState.value = 'connecting'
   
   try {
-    console.log(`🔄 Intento de conexión ${retryCount.value + 1}/${config.maxRetries}`)
-    
-    // Progreso: Preparando conexión
-    updateLoadingProgress(0)
-    await new Promise(resolve => setTimeout(resolve, 300))
-    
-    // Progreso: Obteniendo URL de WebSocket
-    updateLoadingProgress(1)
+    loadingMessage.value = 'Obteniendo URL de WebSocket...'
     chatSession.websocketUrl = getWebSocketUrl()
     console.log('🔗 URL de WebSocket configurada:', chatSession.websocketUrl)
-    await new Promise(resolve => setTimeout(resolve, 400))
     
-    // Progreso: Estableciendo conexión
-    updateLoadingProgress(2)
+    loadingMessage.value = 'Conectando...'
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    // Progreso: Conectado
-    updateLoadingProgress(3)
-    await new Promise(resolve => setTimeout(resolve, 300))
-    
-    console.log('✅ Chat UI listo para conectar al WebSocket')
+    console.log('✅ Chat UI listo')
     chatSession.isActive = true
     connectionState.value = 'connected'
-    retryCount.value = 0
     
   } catch (err) {
     console.error('❌ Error en chat UI:', err)
     error.value = err.message || 'Error al inicializar el chat UI'
     connectionState.value = 'error'
-    retryCount.value++
-    
-    // Auto-retry solo si no es un error de configuración
-    if (config.autoRetry && retryCount.value < config.maxRetries && !err.message?.includes('No se encontró URL')) {
-      const delay = Math.min(config.retryDelay * retryCount.value, 8000)
-      console.log(`🔄 Reintentando en ${delay}ms...`)
-      connectionState.value = 'reconnecting'
-      setTimeout(() => {
-        iniciarChatUI()
-      }, delay)
-    }
   } finally {
     loading.value = false
   }
@@ -235,58 +216,18 @@ const iniciarChatUI = async () => {
 const onConversationComplete = (summary) => {
   console.log('🏁 Conversación completada:', summary)
   
-  // Calcular estadísticas de la conversación
-  const endTime = new Date()
-  const duration = Math.round((endTime - chatSession.startTime) / 1000 / 60)
-  conversationStats.value = {
-    duration: `${duration} minutos`,
-    messageCount: summary?.messageCount || 'N/A',
-    endTime: endTime.toLocaleString()
-  }
-  
-  chatSession.isActive = false
-  chatSession.websocketUrl = ''
+  // Marcar conversación como completada sin cambiar la vista
   chatSession.completed = true
   connectionState.value = 'completed'
   error.value = ''
+  console.log('🔒 Chat bloqueado - conversación finalizada')
 }
 
 const onMessageSent = (message) => {
   console.log('📤 Mensaje enviado desde chat UI:', message)
 }
 
-const reiniciarServicio = () => {
-  console.log('🔄 Reiniciando chat UI...')
-  retryCount.value = 0
-  chatSession.isActive = false
-  chatSession.completed = false
-  chatSession.websocketUrl = ''
-  chatSession.startTime = new Date()
-  connectionState.value = 'disconnected'
-  conversationStats.value = null
-  loadingProgress.value = 0
-  iniciarChatUI()
-}
 
-const exportarConversacion = () => {
-  // Funcionalidad para exportar la conversación
-  const data = {
-    timestamp: new Date().toISOString(),
-    stats: conversationStats.value,
-    chatUI: 'chat-ia',
-    version: '1.0.0'
-  }
-  
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `conversacion-${Date.now()}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-  
-  console.log('📥 Conversación exportada')
-}
 </script>
 
 <style scoped>
@@ -323,20 +264,7 @@ const exportarConversacion = () => {
   margin: 0 auto 25px;
 }
 
-.loading-progress {
-  margin-top: 20px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  height: 8px;
-  overflow: hidden;
-}
 
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #8BC34A);
-  border-radius: 10px;
-  transition: width 0.5s ease;
-}
 
 .connection-info {
   margin-top: 15px;
@@ -395,11 +323,7 @@ const exportarConversacion = () => {
   transform: translateY(-2px);
 }
 
-.retry-info {
-  margin-top: 10px;
-  font-size: 14px;
-  opacity: 0.8;
-}
+
 
 .chat-section {
   width: 100%;
@@ -410,7 +334,6 @@ const exportarConversacion = () => {
 }
 
 .header {
-  text-align: center;
   color: white;
   padding: 20px;
   background: rgba(255, 255, 255, 0.1);
@@ -418,6 +341,34 @@ const exportarConversacion = () => {
   border-radius: 15px 15px 0 0;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
+
+.header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.header-text {
+  text-align: left;
+  flex: 1;
+}
+
+.header-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar-label {
+  font-size: 0.85em;
+  font-weight: 600;
+  opacity: 0.9;
+  text-align: center;
+}
+
+
 
 .header-title {
   margin: 0 0 10px 0;
@@ -436,7 +387,6 @@ const exportarConversacion = () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-top: 10px;
 }
 
 .status-indicator {
@@ -459,6 +409,17 @@ const exportarConversacion = () => {
   font-weight: 500;
 }
 
+
+
+.debug-info {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
 .chat-widget {
   flex: 1;
   border-radius: 0;
@@ -477,80 +438,7 @@ const exportarConversacion = () => {
   opacity: 0.8;
 }
 
-.completion-section {
-  text-align: center;
-  color: white;
-  padding: 50px;
-  border-radius: 20px;
-  background: rgba(76, 175, 80, 0.1);
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-  max-width: 600px;
-  width: 100%;
-}
 
-.stats-card {
-  margin: 30px 0;
-  padding: 25px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.stats-grid {
-  display: grid;
-  gap: 15px;
-  margin-top: 20px;
-}
-
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.stat-label {
-  font-weight: 600;
-  opacity: 0.9;
-}
-
-.stat-value {
-  font-weight: 700;
-  color: #4CAF50;
-}
-
-.completion-actions {
-  display: flex;
-  gap: 15px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 30px;
-}
-
-.restart-button, .export-button {
-  padding: 12px 25px;
-  border-radius: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  color: white;
-}
-
-.restart-button {
-  background: rgba(76, 175, 80, 0.2);
-}
-
-.export-button {
-  background: rgba(33, 150, 243, 0.2);
-}
-
-.restart-button:hover, .export-button:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.3);
-}
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -572,13 +460,14 @@ const exportarConversacion = () => {
     font-size: 2em;
   }
   
-  .completion-actions {
+  .header-main {
     flex-direction: column;
-    align-items: stretch;
+    align-items: center;
+    gap: 15px;
   }
   
-  .restart-button, .export-button {
-    width: 100%;
+  .header-text {
+    text-align: center;
   }
 }
 </style> 

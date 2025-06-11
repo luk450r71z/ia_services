@@ -30,9 +30,9 @@ class QuestionarieRHAgent:
         self.state = ConversationState()
         self.initialized = False
         
-        # Normalizar preguntas al formato interno
+        # Usar extract_questions para manejar cualquier formato
         if questions:
-            self.questions_data = self._normalize_questions(questions)
+            self.questions_data = self.extract_questions(questions)
             self.questions = [q["question"] for q in self.questions_data]
         else:
             self.questions_data = []
@@ -41,21 +41,6 @@ class QuestionarieRHAgent:
         # Guardar preguntas en metadatos
         if self.questions:
             self.state.extra_data["questions_data"] = self.questions_data
-            print(f"🎯 Agente inicializado con {len(self.questions)} preguntas")
-        else:
-            print("🎯 Agente inicializado sin preguntas específicas")
-    
-    def _normalize_questions(self, questions: List[Any]) -> List[Dict[str, Any]]:
-        """Normaliza preguntas a formato interno consistente"""
-        normalized = []
-        for q in questions:
-            if isinstance(q, str):
-                # Pregunta simple como string
-                normalized.append({"question": q, "options": None})
-            elif isinstance(q, dict):
-                # Ya está en formato dict
-                normalized.append(q)
-        return normalized
     
     @staticmethod
     def extract_questions(questions_data: Any) -> List[Dict[str, Any]]:
@@ -80,9 +65,7 @@ class QuestionarieRHAgent:
         groq_api_key = os.getenv("GROQ_API_KEY")
         
         if not groq_api_key:
-            raise ValueError("❌ GROQ_API_KEY es requerida para extraer preguntas inteligentemente")
-        
-        print("🧠 Extrayendo preguntas con opciones usando LLM")
+            raise ValueError("GROQ_API_KEY es requerida para extraer preguntas inteligentemente")
         
         llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
         
@@ -105,21 +88,20 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
             json_end = content.rfind(']') + 1
             
             if json_start == -1 or json_end == 0:
-                raise ValueError("❌ No se encontró array JSON en la respuesta")
+                raise ValueError("No se encontró array JSON en la respuesta")
             
             json_content = content[json_start:json_end]
             questions_with_options = json.loads(json_content)
             
             if not questions_with_options:
-                raise ValueError("❌ No se encontraron preguntas en el JSON proporcionado")
+                raise ValueError("No se encontraron preguntas en el JSON proporcionado")
             
-            print(f"✅ Extraídas {len(questions_with_options)} preguntas con opciones")
             return questions_with_options
             
         except json.JSONDecodeError as e:
-            raise ValueError(f"❌ Error parseando JSON: {json_content[:100]}...")
+            raise ValueError(f"Error parseando JSON: {json_content[:100]}...")
         except Exception as e:
-            raise ValueError(f"❌ Error procesando respuesta del LLM: {str(e)}")
+            raise ValueError(f"Error procesando respuesta del LLM: {str(e)}")
     
     def _format_question_with_options(self, question_index: int) -> str:
         """
@@ -146,63 +128,49 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
             # Es pregunta abierta
             return question_text
     
-    def start_conversation(self) -> str:
+    def start_conversation(self, session_data: Dict[str, Any] = None) -> str:
         """
         Inicia una nueva conversación.
+        
+        Args:
+            session_data: Datos de la sesión (opcional, para personalización)
         
         Returns:
             Mensaje inicial del agente
         """
-        # Si ya está inicializado, devolver el mensaje de bienvenida sin volver a inicializar
-        if self.initialized:
-            print("✅ Conversación ya inicializada, devolviendo mensaje existente")
-            welcome_content = """¡Hola! Soy el asistente de RRHH de Adaptiera. 
-Voy a realizarte algunas preguntas para conocerte mejor.
-Responde con la mayor sinceridad posible.
-
-Empecemos:"""
-            if self.state.current_question:
-                formatted_question = self._format_question_with_options(self.state.current_question_index)
-                return f"{welcome_content}\n\n{formatted_question}"
-            return welcome_content
+        # Extraer username si está disponible
+        username = ""
+        if session_data and 'content' in session_data:
+            content = session_data['content']
+            username = content.get('username', '')
         
-        print("🚀 Inicializando conversación...")
-        
-        # Usar preguntas proporcionadas o cargar preguntas por defecto
-        if self.questions:
-            questions = self.questions
-        else:
-            # No hay preguntas configuradas
-            print("❌ No hay preguntas configuradas para esta sesión")
+        # Verificar que hay preguntas configuradas
+        if not self.questions:
             return "Error: No se han configurado preguntas para esta entrevista. Por favor, contacta al administrador."
         
-
-
-        self.state.pending_questions = questions
+        # Configurar estado inicial
+        self.state.pending_questions = self.questions
         self.state.current_question_index = 0
+        self.state.current_question = self.questions[0]
         
-        if questions:
-            self.state.current_question = questions[0]
-            
-            # Mensaje de bienvenida
-            welcome_content = """¡Hola! Soy el asistente de RRHH de Adaptiera. 
+        # Mensaje de bienvenida personalizado
+        greeting = f"¡Hola {username}!" if username else "¡Hola!"
+        welcome_content = f"""{greeting} Soy el asistente de RRHH de Adaptiera. 
 Voy a realizarte algunas preguntas para conocerte mejor.
 Responde con la mayor sinceridad posible.
 
 Empecemos:"""
-            
-            welcome_message = AIMessage(content=welcome_content)
-            self.state.messages.append(welcome_message)
-            
-            # Primera pregunta con opciones (si las tiene)
-            formatted_question = self._format_question_with_options(0)
-            question_message = AIMessage(content=formatted_question)
-            self.state.messages.append(question_message)
-            
-            self.initialized = True
-            return f"{welcome_message.content}\n\n{formatted_question}"
         
-        return "¡Hola! Soy el asistente de RRHH. ¿Cómo puedo ayudarte?"
+        welcome_message = AIMessage(content=welcome_content)
+        self.state.messages.append(welcome_message)
+        
+        # Primera pregunta con opciones (si las tiene)
+        formatted_question = self._format_question_with_options(0)
+        question_message = AIMessage(content=formatted_question)
+        self.state.messages.append(question_message)
+        
+        self.initialized = True
+        return f"{welcome_message.content}\n\n{formatted_question}"
     
     def process_user_input(self, user_input: str) -> str:
         """
@@ -219,14 +187,11 @@ Empecemos:"""
         
         # Verificar si la conversación ya está completa
         if self.state.conversation_complete:
-            print("⚠️ Mensaje rechazado: la conversación ya está completa")
             return "La entrevista ya ha finalizado. ¡Gracias por tu participación!"
         
         # Agregar mensaje del usuario al estado
         user_message = HumanMessage(content=user_input)
         self.state.messages.append(user_message)
-        
-        print(f"🤔 Procesando respuesta del usuario: {user_input[:50]}...")
         
         # Evaluar la respuesta
         is_satisfactory, clarification_reason = self._evaluate_response(user_input)
@@ -246,7 +211,6 @@ Empecemos:"""
             # Las respuestas se guardan automáticamente en la base de datos
             self.state.needs_clarification = False
             self.state.clarification_reason = None
-            print(f"✅ Respuesta aceptada para: {self.state.current_question}")
             
             # Avanzar a la siguiente pregunta
             return self._next_question()
@@ -254,7 +218,6 @@ Empecemos:"""
             # Solicitar aclaración
             self.state.needs_clarification = True
             self.state.clarification_reason = clarification_reason
-            print(f"❓ Necesita clarificación: {clarification_reason}")
             
             clarification_message = AIMessage(content=f"""Me gustaría que puedas ampliar tu respuesta anterior.
 {clarification_reason}
@@ -293,7 +256,7 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
         groq_api_key = os.getenv("GROQ_API_KEY")
         
         if not groq_api_key:
-            raise ValueError("❌ GROQ_API_KEY es requerida para validar opciones múltiples")
+            raise ValueError("GROQ_API_KEY es requerida para validar opciones múltiples")
         
         llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
         
@@ -316,10 +279,8 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
         content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
         
         if content.startswith("VALIDA"):
-            print(f"✅ Opción múltiple válida: {user_response}")
             return True, ""
         else:
-            print(f"❌ Opción múltiple inválida: {user_response}")
             options_list = "\n".join([f"  • {opt}" for opt in options])
             return False, f"Debes elegir una de las siguientes opciones:\n{options_list}"
     
@@ -364,7 +325,6 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
                 # Formato inesperado, ser permisivo
                 return True, ""
         except Exception as e:
-            print(f"Error evaluando pregunta abierta: {e}")
             # Fallback simple
             is_satisfactory = len(user_response.strip()) > 3
             clarification_reason = "Por favor, proporciona una respuesta más detallada." if not is_satisfactory else ""
@@ -377,8 +337,6 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
         Returns:
             Mensaje con la siguiente pregunta o finalización
         """
-        print("➡️ Avanzando a la siguiente pregunta...")
-        
         self.state.current_question_index += 1
         
         if self.state.current_question_index < len(self.state.pending_questions):
@@ -406,8 +364,6 @@ Siguiente pregunta:
         Returns:
             Mensaje de finalización
         """
-        print("🏁 Finalizando conversación...")
-        
         self.state.conversation_complete = True
         self.state.current_question = None
         
@@ -416,10 +372,9 @@ Siguiente pregunta:
         
         final_message = AIMessage(content="""¡Muchas gracias por tu tiempo! 
 
-✅ Tus respuestas han sido guardadas correctamente
-✅ Se enviarán notificaciones automáticamente (si están configuradas)
+✅ Tus respuestas han sido guardadas correctamente.
 
-Nuestro equipo de RRHH revisará tu información y se pondrá en contacto contigo pronto.
+✅ Nuestro equipo de RRHH revisará tu información y se pondrá en contacto contigo pronto.
 
 ¡Que tengas un excelente día!""")
         

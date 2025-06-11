@@ -33,18 +33,11 @@ async def initiate_questionnarie(request: InitiateServiceRequest):
     try:
         # Actualizar la sesión con la configuración proporcionada
         if request.content or request.configs:
-            from auth.db.sqlite_db import update_session_db
-            
-            # Obtener sesión actual para preservar datos existentes
-            session_current = SessionService.validate_session_for_initiate(session_id)
-            
-            # Actualizar con nueva configuración
-            update_session_db(
+            SessionService.update_session_content(
                 session_id=session_id,
-                type_value=service_type,  # Usar tipo fijo
-                status=session_current.get('status', 'new'),
-                content=request.content or session_current.get('content', {}),
-                configs=request.configs or session_current.get('configs', {})
+                new_content=request.content,
+                new_configs=request.configs,
+                session_type=service_type
             )
             logger.info(f"Sesión {session_id} actualizada con nueva configuración")
         
@@ -87,6 +80,8 @@ async def initiate_questionnarie(request: InitiateServiceRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error interno del servidor: {str(e)}"
         )
+
+
 
 @chat_router.websocket("/questionnarie/start/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):

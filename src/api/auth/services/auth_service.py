@@ -50,7 +50,7 @@ class AuthService:
         
         session = create_session_db(
             type_value=session_type,
-            content=content,
+            content={"username": username, **(content or {})},
             configs=configs
         )
         
