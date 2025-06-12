@@ -31,11 +31,14 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
     service_type = "questionnaire"  # Tipo implícito en el endpoint
     
     # Validación simple: content debe contener questions
-    if request.content and 'questions' not in request.content:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El content debe contener el campo 'questions'"
-        )
+    if request.content:
+        required_content_fields = ['questions', 'client_name', 'welcome_message']
+        missing_fields = [field for field in required_content_fields if field not in request.content]
+        if missing_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El content debe contener los campos: {', '.join(missing_fields)}"
+            )
     # Validación de campos requeridos en configs
     if request.configs:
         required_fields = ['webhook_url', 'email', 'avatar']
@@ -65,7 +68,7 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
         # Crear respuesta con URLs
         urls = ServiceUrls(
             websocket_url=f"ws://localhost:8000/api/chat/questionnaire/start/{id_session}",
-            webui_url=f"http://localhost:8080?id_session={id_session}"
+            webui_url=f"http://localhost:8080/{id_session}"
         )
         
         return InitiateServiceResponse(

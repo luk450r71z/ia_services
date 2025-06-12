@@ -4,7 +4,7 @@
 
 ## 📋 Descripción
 
-IA Services es una plataforma completa que combina un backend robusto en FastAPI con un frontend interactivo en Vue.js para proporcionar servicios de inteligencia artificial, especialmente enfocado en chatbots conversacionales para entrevistas y otras aplicaciones.
+IA Services es una plataforma completa que combina un backend robusto en FastAPI con un frontend interactivo en Vue.js para proporcionar servicios de inteligencia artificial, especialmente enfocado en tests conversacionales para entrevistas y otras aplicaciones.
 
 ## 🏗️ Arquitectura del Proyecto
 
@@ -25,7 +25,7 @@ ia_services/
 │   │       ├── agents/          # Agentes de IA
 │   │       ├── models/          # Esquemas de datos del chat
 │   │       └── utils/           # Utilidades
-│   └── chatbot/                 # Frontend Vue.js
+│   └── test/                 # Frontend Vue.js
 │       ├── package.json         # Dependencias de Node.js
 │       ├── vite.config.js       # Configuración de Vite
 │       ├── index.html           # Página principal del frontend
@@ -92,7 +92,7 @@ El servidor estará disponible en: `http://localhost:8000`
 
 #### Instalar Dependencias de Node.js
 ```bash
-cd src/chatbot
+cd src/test
 npm install
 # o si prefieres yarn
 yarn install
@@ -100,7 +100,7 @@ yarn install
 
 #### Ejecutar el Servidor de Desarrollo
 ```bash
-cd src/chatbot
+cd src/test
 npm run dev
 # o si prefieres yarn
 yarn dev
@@ -110,7 +110,7 @@ El frontend estará disponible en: `http://localhost:3000`
 
 #### Construir para Producción
 ```bash
-cd src/chatbot
+cd src/test
 npm run build
 # o si prefieres yarn
 yarn build
@@ -172,7 +172,7 @@ ws.send(JSON.stringify({
 
 ### 3. Interfaz Web
 1. Ejecuta `python src/api/main.py` para el backend
-2. Ejecuta `npm run dev` en `src/chatbot/` para el frontend
+2. Ejecuta `npm run dev` en `src/test/` para el frontend
 3. Abre `http://localhost:5173` en tu navegador (puerto por defecto de Vite)
 4. Usa el widget de chat para interactuar con el agente
 
@@ -201,7 +201,7 @@ cd src/api
 python main.py
 
 # Terminal 2: Frontend
-cd src/chatbot
+cd src/test
 npm run dev
 ```
 

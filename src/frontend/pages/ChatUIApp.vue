@@ -143,17 +143,15 @@ onMounted(() => {
 
 // Función para obtener la URL del WebSocket
 const getWebSocketUrl = () => {
-  const urlParams = new URLSearchParams(window.location.search)
-  
-  // Obtener id_session de los parámetros de URL
-  const idSession = urlParams.get('id_session')
+  // Extraer id_session de la ruta, asumiendo formato /{id_session}
+  const pathParts = window.location.pathname.split('/').filter(Boolean)
+  const idSession = pathParts[0] // Primer segmento después de /
   if (idSession) {
-            const wsUrl = `ws://localhost:8000/api/chat/questionnaire/start/${idSession}`
-    console.log('🔗 URL de WebSocket construida desde id_session:', wsUrl)
+    const wsUrl = `ws://localhost:8000/api/chat/questionnaire/start/${idSession}`
+    console.log('🔗 URL de WebSocket construida desde pathname:', wsUrl)
     return wsUrl
   }
-  
-  throw new Error('No se encontró id_session. Proporciona el id_session mediante: ?id_session=...')
+  throw new Error('No se encontró id_session en la ruta. Usa una URL como http://localhost:8080/{id_session}')
 }
 
 // Función principal del chat-ui (simplificada)

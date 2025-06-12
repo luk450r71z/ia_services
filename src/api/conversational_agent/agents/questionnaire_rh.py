@@ -28,18 +28,14 @@ class QuestionnaireRHAgent:
         Inicializa el agente de RRHH.
         
         Args:
-            content: Contenido completo de la sesión (username, questions, etc.)
+            content: Contenido completo de la sesión (welcome_message, questions, etc.)
         """
         self.state = ConversationState()
         self.initialized = False
-        
-        # Extraer username del content
-        self.username = ""
-        if content:
-            self.username = content.get('username', '')
+        self.content = content or {}  # Inicializar content como diccionario vacío si es None
         
         # Debug: Log del content recibido
-        logger.info(f"🔧 DEBUG: Inicializando agente con username='{self.username}' y questions_data={len(content.get('questions', []) if content else [])} preguntas")
+        logger.info(f"🔧 DEBUG: Inicializando agente con questions_data={len(content.get('questions', []) if content else [])} preguntas")
         
         # Extraer y procesar questions del content
         questions_data = content.get('questions', []) if content else []
@@ -152,13 +148,13 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         Inicia una nueva conversación.
         
         Args:
-            session_data: Datos de la sesión (opcional, no usado ya que el username se carga en __init__)
+            session_data: Datos de la sesión (opcional)
         
         Returns:
             Mensaje inicial del agente
         """
         # Debug: Log del estado del agente
-        logger.info(f"🔧 DEBUG: start_conversation - username='{self.username}', questions_count={len(self.questions)}")
+        logger.info(f"🔧 DEBUG: start_conversation - questions_count={len(self.questions)}")
         
         # Verificar que hay preguntas configuradas
         if not self.questions:
@@ -170,15 +166,16 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         self.state.current_question_index = 0
         self.state.current_question = self.questions[0]
         
-        # Mensaje de bienvenida personalizado usando el username almacenado
-        greeting = f"¡Hola {self.username}!" if self.username else "¡Hola!"
-        logger.info(f"🔧 DEBUG: Greeting generado: '{greeting}'")
-        
-        welcome_content = f"""{greeting} Soy el asistente de RRHH de Adaptiera. 
+        # Obtener mensaje de bienvenida del content y reemplazar variables
+        welcome_content = self.content.get('welcome_message', """Soy el asistente de RRHH de Adaptiera. 
 Voy a realizarte algunas preguntas para conocerte mejor.
 Responde con la mayor sinceridad posible.
 
-Empecemos:"""
+Empecemos:""")
+        
+        # Reemplazar {client_name} con el nombre real del cliente
+        client_name = self.content.get('client_name', '')
+        welcome_content = welcome_content.replace('{client_name}', client_name)
         
         welcome_message = AIMessage(content=welcome_content)
         self.state.messages.append(welcome_message)
@@ -436,9 +433,10 @@ def create_questionnaire_rh_agent(content: Dict[str, Any] = None) -> Questionnai
     Crea una nueva instancia del agente de RRHH simplificado.
     
     Args:
-        content: Contenido completo de la sesión (username, questions, etc.)
+        content: Contenido completo de la sesión (welcome_message, questions, etc.)
     
     Returns:
         Instancia del agente configurada
     """
+    logger.info(f"🤖 Creando agente con content completo (questions_data: {len(content.get('questions', []) if content else [])} preguntas)")
     return QuestionnaireRHAgent(content) 

@@ -1,6 +1,6 @@
-# IA Services - Chatbot
+# IA Services - Test
 
-Servicio de chatbot para la plataforma IA Services.
+Servicio de test para la plataforma IA Services.
 
 ## Desarrollo Local
 
@@ -29,7 +29,7 @@ npm run build
 ## Estructura del Proyecto
 
 ```
-src/chatbot/
+src/test/
 ├── index.html          # Punto de entrada HTML
 ├── src/
 │   ├── main.js        # Punto de entrada JavaScript

@@ -1,0 +1,10 @@
+{
+  "content": {
+  "client_name": "Santiago",
+  "welcome_message":"Hola {client_name} soy un bot que te realizara unas preguntas para el puesto de Desarrollado Python.",
+  "questions": [
+    {"id": "1", "type": "", "pregunta": "cual es tu experiencia en python?"},
+    {"id": "2", "type": "multiplechoice", "pregunta": "donde vivis", "opciones": ["brasil", "argentina"]}
+  ]
+}
+}

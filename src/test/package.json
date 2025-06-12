@@ -1,7 +1,7 @@
 {
-  "name": "ia-services-chatbot",
+  "name": "ia-services-test",
   "version": "1.0.0",
-  "description": "Chatbot service for IA Services platform",
+  "description": "Test service for IA Services platform",
   "main": "src/main.js",
   "scripts": {
     "dev": "vite",

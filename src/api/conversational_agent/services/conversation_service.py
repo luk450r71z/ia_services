@@ -104,7 +104,7 @@ class ConversationManager:
                 logger.warning(f"⚠️ No hay preguntas configuradas para sesión questionnaire")
                 return None
             
-            logger.info(f"🤖 Creando agente con content completo (username: {content.get('username', 'N/A')})")
+            logger.info(f"🤖 Creando agente con content completo (questions_data: {len(questions_data)} preguntas)")
             
             return QuestionnaireRHAgent(content=content)
         else:
