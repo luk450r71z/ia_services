@@ -15,55 +15,50 @@ class WebSocketManager:
         # Solo conexiones WebSocket activas
         self.active_connections: Dict[str, WebSocket] = {}
     
-    async def connect(self, websocket: WebSocket, session_id: str):
-        """
-        Acepta una nueva conexión WebSocket para una sesión específica
-        """
+    async def connect(self, websocket: WebSocket, id_session: str):
+        """Acepta una nueva conexión WebSocket para una sesión específica"""
         try:
             await websocket.accept()
-            self.active_connections[session_id] = websocket
-            logger.info(f"✅ WebSocket conectado para sesión: {session_id}")
-            
+            self.active_connections[id_session] = websocket
+            logger.info(f"✅ WebSocket conectado para sesión: {id_session}")
         except Exception as e:
-            logger.error(f"❌ Error al conectar WebSocket para sesión {session_id}: {str(e)}")
+            logger.error(f"❌ Error al conectar WebSocket para sesión {id_session}: {str(e)}")
             raise
     
-    def disconnect(self, session_id: str):
-        """
-        Desconecta una sesión específica
-        """
-        if session_id in self.active_connections:
-            del self.active_connections[session_id]
-            logger.info(f"🔌 WebSocket desconectado para sesión: {session_id}")
+    def disconnect(self, id_session: str):
+        """Desconecta una sesión específica"""
+        if id_session in self.active_connections:
+            del self.active_connections[id_session]
+            logger.info(f"🔌 WebSocket desconectado para sesión: {id_session}")
     
-    async def send_message(self, session_id: str, message_type: str, content: str, data: Dict = None):
+    async def send_message(self, id_session: str, message_type: str, content: str, data: Dict = None):
         """Envía un mensaje a una sesión específica"""
-        if session_id in self.active_connections:
-            websocket = self.active_connections[session_id]
+        if id_session in self.active_connections:
+            websocket = self.active_connections[id_session]
             
             message = WebSocketMessage(
                 type=message_type,
                 content=content,
-                session_id=session_id,
+                id_session=id_session,
                 data=data or {}
             )
             
             try:
                 await websocket.send_text(message.model_dump_json())
-                logger.debug(f"📤 Mensaje enviado a {session_id}: {message_type}")
+                logger.debug(f"📤 Mensaje enviado a {id_session}: {message_type}")
             except Exception as e:
-                logger.error(f"❌ Error enviando mensaje a {session_id}: {str(e)}")
-                self.disconnect(session_id)
+                logger.error(f"❌ Error enviando mensaje a {id_session}: {str(e)}")
+                self.disconnect(id_session)
     
-    async def handle_user_message(self, session_id: str, message: str):
+    async def handle_user_message(self, id_session: str, message: str):
         """Procesa un mensaje del usuario delegando a conversation_manager"""
         try:
             # Delegar procesamiento a conversation_manager
-            result = await conversation_manager.process_user_message(session_id, message)
+            result = await conversation_manager.process_user_message(id_session, message)
             
             # Enviar respuesta del agente
             await self.send_message(
-                session_id, 
+                id_session, 
                 "agent_response", 
                 result["response"],
                 {
@@ -72,103 +67,81 @@ class WebSocketManager:
                 }
             )
             
-            logger.info(f"✅ Respuesta del agente enviada para sesión {session_id}")
+            logger.info(f"✅ Respuesta del agente enviada para sesión {id_session}")
             
         except Exception as e:
-            logger.error(f"❌ Error procesando mensaje de usuario en sesión {session_id}: {str(e)}")
-            await self.send_message(session_id, "error", f"Error interno: {str(e)}")
+            logger.error(f"❌ Error procesando mensaje de usuario en sesión {id_session}: {str(e)}")
+            await self.send_message(id_session, "error", f"Error interno: {str(e)}")
 
-    async def connect_and_initialize(self, websocket: WebSocket, session_id: str, session_data: Dict[str, Any] = None):
-        """
-        Conecta WebSocket e inicializa agente con mensaje de bienvenida
-        """
-        await self.connect(websocket, session_id)
+    async def connect_and_initialize(self, websocket: WebSocket, id_session: str, session_data: Dict[str, Any] = None):
+        """Conecta WebSocket, envía configuración UI e inicializa agente con mensaje de bienvenida"""
+        await self.connect(websocket, id_session)
         
         # Enviar configuración de UI al frontend
-        await self._send_ui_config(session_id, session_data or {})
-        
-        await self._initialize_agent_and_send_welcome(session_id, session_data or {})
-    
-    async def _send_ui_config(self, session_id: str, session_data: Dict[str, Any]):
-        """
-        Envía configuración de UI al frontend (similar a como se obtiene content)
-        """
         try:
-            configs = session_data.get('configs', {})
-            avatar_enabled = configs.get('avatar', False)
-            
-            logger.info(f"📋 Datos de sesión completos: {session_data}")
-            logger.info(f"⚙️ Configs extraidos: {configs}")
-            logger.info(f"👤 Avatar enabled: {avatar_enabled}")
-            
+            configs = session_data.get('configs', {}) if session_data else {}
             await self.send_message(
-                session_id,
+                id_session,
                 "ui_config",
                 "",
                 {
-                    "avatar": avatar_enabled,
+                    "avatar": configs.get('avatar', False),
                     "configs": configs
                 }
             )
-            logger.info(f"✅ Configuración de UI enviada a sesión {session_id}: avatar={avatar_enabled}")
-            
+            logger.info(f"✅ Configuración de UI enviada a sesión {id_session}")
         except Exception as e:
-            logger.error(f"❌ Error enviando configuración UI a sesión {session_id}: {str(e)}")
-    
-    async def _initialize_agent_and_send_welcome(self, session_id: str, session_data: Dict[str, Any]):
-        """
-        Inicializa agente y envía mensaje de bienvenida (método privado)
-        """
+            logger.error(f"❌ Error enviando configuración UI a sesión {id_session}: {str(e)}")
+        
+        # Inicializar agente y enviar mensaje de bienvenida
         try:
-            welcome_message = await conversation_manager.initialize_conversation(session_id, session_data)
+            welcome_message = await conversation_manager.initialize_conversation(id_session, session_data)
             if welcome_message:
                 await self.send_message(
-                    session_id,
+                    id_session,
                     "agent_response", 
                     welcome_message,
                     {"is_welcome": True}
                 )
-                logger.info(f"📨 Mensaje de bienvenida enviado a sesión: {session_id}")
+                logger.info(f"📨 Mensaje de bienvenida enviado a sesión: {id_session}")
             else:
-                logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {session_id}")
+                logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {id_session}")
         except Exception as e:
             logger.error(f"❌ Error inicializando agente: {str(e)}")
     
-    async def handle_connection_lifecycle(self, websocket: WebSocket, session_id: str):
-        """
-        Maneja todo el ciclo de vida de la conexión WebSocket
-        """
+    async def handle_connection_lifecycle(self, websocket: WebSocket, id_session: str):
+        """Maneja todo el ciclo de vida de la conexión WebSocket"""
         try:
             while True:
                 message_data = await websocket.receive_text()
-                logger.debug(f"📨 Mensaje recibido de {session_id}: {message_data[:100]}...")
+                logger.debug(f"📨 Mensaje recibido de {id_session}: {message_data[:100]}...")
                 
                 try:
                     message_json = json.loads(message_data)
                     user_message = message_json.get('content', '').strip()
                     
                     if user_message:
-                        await self.handle_user_message(session_id, user_message)
+                        await self.handle_user_message(id_session, user_message)
                     else:
-                        logger.warning(f"⚠️ Mensaje vacío de sesión: {session_id}")
+                        logger.warning(f"⚠️ Mensaje vacío de sesión: {id_session}")
                         
                 except json.JSONDecodeError as e:
-                    logger.error(f"❌ Error JSON de sesión {session_id}: {str(e)}")
+                    logger.error(f"❌ Error JSON de sesión {id_session}: {str(e)}")
                     await self.send_message(
-                        session_id, 
+                        id_session, 
                         "error", 
                         "Formato inválido. Usa: {\"content\": \"tu mensaje\"}"
                     )
                 except Exception as e:
-                    logger.error(f"❌ Error procesando mensaje de sesión {session_id}: {str(e)}")
+                    logger.error(f"❌ Error procesando mensaje de sesión {id_session}: {str(e)}")
                     await self.send_message(
-                        session_id, 
+                        id_session, 
                         "error", 
                         f"Error procesando mensaje: {str(e)}"
                     )
         except Exception as e:
             # Desconectar automáticamente en caso de error
-            self.disconnect(session_id)
+            self.disconnect(id_session)
             raise
 
 # Instancia global del manager

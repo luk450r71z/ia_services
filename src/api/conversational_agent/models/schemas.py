@@ -5,7 +5,7 @@ from enum import Enum
 
 class ServiceType(str, Enum):
     """Tipos de servicios disponibles"""
-    QUESTIONNARIE = "questionnarie"
+    QUESTIONNAIRE = "questionnaire"
 
 class SessionStatus(str, Enum):
     """Estados posibles de una sesión"""
@@ -17,7 +17,7 @@ class SessionStatus(str, Enum):
 
 class QuestionnaireResponse(BaseModel):
     """Response for questionnaire answers"""
-    session_id: str
+    id_session: str
     question: str
     answer: str
     question_number: int
@@ -26,7 +26,7 @@ class QuestionnaireResponse(BaseModel):
 
 class ConversationSummary(BaseModel):
     """Summary of the entire conversation"""
-    session_id: str
+    id_session: str
     service_type: str
     questions_count: int
     responses: list[QuestionnaireResponse]
@@ -48,7 +48,7 @@ class WebSocketMessage(BaseModel):
     """Modelo para mensajes WebSocket"""
     type: WebSocketMessageType
     content: Optional[str] = None
-    session_id: Optional[str] = Field(None, min_length=1)
+    id_session: Optional[str] = Field(None, min_length=1)
     data: Optional[Dict[str, Any]] = None
     timestamp: Optional[datetime] = None
     
@@ -57,7 +57,7 @@ class WebSocketMessage(BaseModel):
 
 class ChatSession(BaseModel):
     """Modelo para sesiones de chat"""
-    session_id: str = Field(..., min_length=1)
+    id_session: str = Field(..., min_length=1)
     created_at: datetime
     is_active: bool = True
     last_activity: Optional[datetime] = None

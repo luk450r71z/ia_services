@@ -1,7 +1,7 @@
 {
   "name": "frontend-chat-ia",
   "version": "1.0.0",
-  "description": "Frontend independiente de Chat IA - Servido desde webui_url del endpoint questionnarie/initiate",
+  "description": "Frontend independiente de Chat IA - Servido desde webui_url del endpoint questionnaire/initiate",
   "type": "module",
   "main": "chat-ui.js",
   "scripts": {

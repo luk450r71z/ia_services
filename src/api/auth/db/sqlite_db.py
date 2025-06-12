@@ -94,19 +94,19 @@ def create_session_db(type_value=None, content=None, configs=None):
         conn = get_db()
         cursor = conn.cursor()
 
-        session_id = str(uuid4())
+        id_session = str(uuid4())
         created_at = datetime.utcnow().isoformat()
         
         # Convertir content y configs a JSON si se proporcionan
         content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
         configs_json = json.dumps(configs, ensure_ascii=False) if configs else '{}'
         
-        logger.info(f"Insertando sesión con ID: {session_id}")
+        logger.info(f"Insertando sesión con ID: {id_session}")
         cursor.execute("""
         INSERT INTO sessions (id_session, type, created_at, updated_at, status, content, configs)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            session_id,
+            id_session,
             type_value,  # type proporcionado o None
             created_at,
             created_at,  # updated_at igual a created_at inicialmente
@@ -117,7 +117,7 @@ def create_session_db(type_value=None, content=None, configs=None):
         conn.commit()
 
         # Obtener la sesión creada
-        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
+        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (id_session,))
         session = cursor.fetchone()
         
         if session:
@@ -162,15 +162,15 @@ def create_session_db(type_value=None, content=None, configs=None):
         if conn:
             conn.close()
 
-def get_session_db(session_id: str):
+def get_session_db(id_session: str):
     """Get a session from SQLite database"""
-    logger.info(f"Obteniendo sesión con ID: {session_id}")
+    logger.info(f"Obteniendo sesión con ID: {id_session}")
     conn = None
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
+        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (id_session,))
         session = cursor.fetchone()
 
         if session:
@@ -184,7 +184,7 @@ def get_session_db(session_id: str):
                 else:
                     session['content'] = None
             except json.JSONDecodeError as e:
-                logger.warning(f"Error parseando content JSON para sesión {session_id}: {e}")
+                logger.warning(f"Error parseando content JSON para sesión {id_session}: {e}")
                 session['content'] = None
                 
             try:
@@ -193,11 +193,11 @@ def get_session_db(session_id: str):
                 else:
                     session['configs'] = None
             except json.JSONDecodeError as e:
-                logger.warning(f"Error parseando configs JSON para sesión {session_id}: {e}")
+                logger.warning(f"Error parseando configs JSON para sesión {id_session}: {e}")
                 session['configs'] = None
             logger.info(f"Sesión encontrada: {session}")
         else:
-            logger.warning(f"Sesión no encontrada con ID: {session_id}")
+            logger.warning(f"Sesión no encontrada con ID: {id_session}")
 
         return session
 
@@ -211,9 +211,9 @@ def get_session_db(session_id: str):
         if conn:
             conn.close()
 
-def update_session_db(session_id: str, type_value: str, status: str, content: dict, configs: dict = None):
+def update_session_db(id_session: str, type_value: str, status: str, content: dict, configs: dict = None):
     """Update a session in SQLite database"""
-    logger.info(f"Actualizando sesión con ID: {session_id}")
+    logger.info(f"Actualizando sesión con ID: {id_session}")
     conn = None
     try:
         conn = get_db()
@@ -227,16 +227,16 @@ def update_session_db(session_id: str, type_value: str, status: str, content: di
         UPDATE sessions 
         SET type = ?, status = ?, content = ?, configs = ?, updated_at = ?
         WHERE id_session = ?
-        """, (type_value, status, content_json, configs_json, updated_at, session_id))
+        """, (type_value, status, content_json, configs_json, updated_at, id_session))
         
         if cursor.rowcount == 0:
-            logger.warning(f"No se encontró sesión con ID: {session_id}")
+            logger.warning(f"No se encontró sesión con ID: {id_session}")
             return None
             
         conn.commit()
 
         # Obtener la sesión actualizada
-        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (session_id,))
+        cursor.execute("SELECT * FROM sessions WHERE id_session = ?", (id_session,))
         session = cursor.fetchone()
         
         if session:

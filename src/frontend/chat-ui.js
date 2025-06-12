@@ -9,7 +9,7 @@ const config = {
   version: '1.0.0',
   author: 'Adaptiera Team',
   environment: import.meta.env.MODE || 'development',
-  description: 'Chat UI independiente servido desde webui_url del endpoint questionnarie/initiate'
+  description: 'Chat UI independiente servido desde webui_url del endpoint questionnaire/initiate'
 }
 
 console.log('📋 Configuración del chat-ui:', config)

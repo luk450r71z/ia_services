@@ -46,25 +46,25 @@ npm install
 
 El frontend obtiene la URL del WebSocket de varias formas:
 
-**Opción 1: Session ID (RECOMENDADO)**
+**Opción 1: ID de Sesión (RECOMENDADO)**
 ```
-http://localhost:8080/?session_id=abc123
+http://localhost:8080/?id_session=abc123
 ```
-El frontend construye automáticamente: `ws://localhost:8000/api/chat/questionnarie/start/abc123`
+El frontend construye automáticamente: `ws://localhost:8000/api/chat/questionnaire/start/abc123`
 
 **Opción 2: URL completa de WebSocket**
 ```
-http://localhost:8080/?ws_url=ws://localhost:8000/api/chat/questionnarie/start/session_id
+http://localhost:8080/?ws_url=ws://localhost:8000/api/chat/questionnaire/start/id_session
 ```
 
 **Opción 3: Variable global de JavaScript**
 ```javascript
-window.WEBSOCKET_URL = 'ws://localhost:8000/api/chat/questionnarie/start/session_id'
+window.WEBSOCKET_URL = 'ws://localhost:8000/api/chat/questionnaire/start/id_session'
 ```
 
 **Opción 4: Hash de la URL**
 ```
-http://localhost:8080/#ws://localhost:8000/api/chat/questionnarie/start/session_id
+http://localhost:8080/#ws://localhost:8000/api/chat/questionnaire/start/id_session
 ```
 
 ### Personalizar Preguntas
@@ -243,17 +243,17 @@ curl http://localhost:8000/api/chat/session/auth
 # Verificar configuración de CORS
 ```
 
-**Error: No se encontró session_id**
+**Error: No se encontró id_session**
 ```bash
-# Usar URL con session_id
-http://localhost:8080/?session_id=tu_session_id
+# Usar URL con id_session
+http://localhost:8080/?id_session=tu_id_session
 
 # O usar URL completa de WebSocket
-http://localhost:8080/?ws_url=ws://localhost:8000/api/chat/questionnarie/start/session_id
+http://localhost:8080/?ws_url=ws://localhost:8000/api/chat/questionnaire/start/id_session
 ```
 
 **Chat no inicia automáticamente**
-- Verificar que el endpoint `initiate_questionnarie` retorne `webui_url` con parámetros
+- Verificar que el endpoint `initiate_questionnaire` retorne `webui_url` con parámetros
 - Revisar consola del navegador para errores
 - Verificar que el WebSocket server esté corriendo
 
@@ -275,7 +275,7 @@ npm run test:e2e
 
 ```bash
 # Probar conexión manual
-wscat -c ws://localhost:8000/api/chat/questionnarie/start/test_session
+wscat -c ws://localhost:8000/api/chat/questionnaire/start/test_session
 ```
 
 ## 📦 Build y Deployment

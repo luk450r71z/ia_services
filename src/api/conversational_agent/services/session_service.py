@@ -10,26 +10,23 @@ class SessionService:
     """Servicio para manejar operaciones de sesiones"""
     
     @staticmethod
-    def validate_session_for_start(session_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Valida sesión para WebSocket con lógica mínima
-        
-        Args:
-            session_id: ID de la sesión
-            
-        Returns:
-            Dict con datos de sesión si es válida, None si no
-        """
-        session = get_session_db(session_id)
-        if not session:
-            return None
-        
-        # Verificar expiración (5 minutos)
+    def _validate_session_expiration(session: Dict[str, Any]) -> bool:
+        """Valida si una sesión no ha expirado (5 minutos)"""
         created_at = session['created_at']
         if isinstance(created_at, str):
             created_at = datetime.fromisoformat(created_at)
         
-        if datetime.utcnow() - created_at > timedelta(minutes=5):
+        return datetime.utcnow() - created_at <= timedelta(minutes=5)
+    
+    @staticmethod
+    def validate_session_for_start(id_session: str) -> Optional[Dict[str, Any]]:
+        """Valida sesión para WebSocket - debe estar 'initiated' o 'started' y no expirada"""
+        session = get_session_db(id_session)
+        if not session:
+            return None
+        
+        # Verificar expiración
+        if not SessionService._validate_session_expiration(session):
             return None
         
         # Debe estar initiated para poder iniciar WebSocket
@@ -39,76 +36,37 @@ class SessionService:
         return session
     
     @staticmethod
-    def validate_session_for_initiate(session_id: str) -> Dict[str, Any]:
-        """
-        Valida y obtiene sesión para inicialización
-        
-        Args:
-            session_id: ID de la sesión
-            
-        Returns:
-            Dict con datos de sesión
-            
-        Raises:
-            ValueError: Si la sesión no es válida
-        """
-        session = get_session_db(session_id)
+    def validate_and_get_session_for_initiate(id_session: str) -> Dict[str, Any]:
+        """Valida y obtiene sesión para inicialización - marca como expired si es necesario"""
+        session = get_session_db(id_session)
         if not session:
             raise ValueError("Sesión no encontrada")
         
-        # Verificar tiempo de expiración (5 minutos)
-        created_at = session['created_at']
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-        
-        time_diff = datetime.utcnow() - created_at
-        if time_diff > timedelta(minutes=5):
-            # Actualizar status como expired
-            service_type = session.get('type')
-            content = session.get('content', {})
-            configs = session.get('configs', {})
-            
+        # Verificar tiempo de expiración y marcar como expired si es necesario
+        if not SessionService._validate_session_expiration(session):
             update_session_db(
-                session_id=session_id,
-                type_value=service_type,
+                id_session=id_session,
+                type_value=session.get('type'),
                 status="expired",
-                content=content,
-                configs=configs or {}
+                content=session.get('content', {}),
+                configs=session.get('configs', {})
             )
             raise ValueError(f"Sesión expirada. Máximo 5 minutos desde la creación")
-        
-        # El contenido se validará en el endpoint de inicialización
-        # No es necesario que esté presente en este punto
             
         return session
     
     @staticmethod
-    def initiate_session(session_id: str) -> Dict[str, Any]:
-        """
-        Inicializa una sesión cambiando su status a 'initiated'
-        
-        Args:
-            session_id: ID de la sesión
-            
-        Returns:
-            Dict con datos de sesión actualizada
-            
-        Raises:
-            Exception: Si hay error al actualizar
-        """
-        session = SessionService.validate_session_for_initiate(session_id)
-        
-        service_type = session.get('type')
-        content = session.get('content', {})
-        configs = session.get('configs', {})
+    def initiate_session(id_session: str) -> Dict[str, Any]:
+        """Inicializa una sesión cambiando su status a 'initiated'"""
+        session = SessionService.validate_and_get_session_for_initiate(id_session)
         
         # Actualizar la sesión en la base de datos
         updated_session = update_session_db(
-            session_id=session_id,
-            type_value=service_type,
+            id_session=id_session,
+            type_value=session.get('type'),
             status="initiated",
-            content=content,
-            configs=configs
+            content=session.get('content', {}),
+            configs=session.get('configs', {})
         )
         
         if not updated_session:
@@ -117,71 +75,39 @@ class SessionService:
         return updated_session
     
     @staticmethod
-    def start_session(session_id: str, session_data: Dict[str, Any]) -> None:
-        """
-        Marca una sesión como 'started'
-        
-        Args:
-            session_id: ID de la sesión
-            session_data: Datos de la sesión
-        """
+    def mark_session_as_started(id_session: str, session_data: Dict[str, Any]) -> None:
+        """Marca una sesión como 'started'"""
         if session_data['status'] == 'initiated':
-            content = session_data.get('content')
             update_session_db(
-                session_id=session_id,
+                id_session=id_session,
                 type_value=session_data.get('type'),
                 status="started",
-                content=content,
+                content=session_data.get('content'),
                 configs=session_data.get('configs', {})
             )
-            logger.info(f"✅ Sesión {session_id} actualizada a 'started'")
+            logger.info(f"✅ Sesión {id_session} actualizada a 'started'")
 
     @staticmethod
-    def get_session(session_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene los datos de una sesión
-        
-        Args:
-            session_id: ID de la sesión
-            
-        Returns:
-            Dict con datos de sesión o None si no existe
-        """
-        return get_session_db(session_id)
+    def get_session(id_session: str) -> Optional[Dict[str, Any]]:
+        """Obtiene los datos de una sesión"""
+        return get_session_db(id_session)
     
     @staticmethod
-    def update_session_content(session_id: str, new_content: Dict[str, Any] = None, new_configs: Dict[str, Any] = None, session_type: str = None) -> Dict[str, Any]:
-        """
-        Actualiza el content y configs de una sesión preservando datos existentes
+    def update_session_content_and_configs(id_session: str, new_content: Dict[str, Any] = None, new_configs: Dict[str, Any] = None, session_type: str = None) -> Dict[str, Any]:
+        """Actualiza el content y configs de una sesión reemplazando el contenido completo"""
+        session = SessionService.validate_and_get_session_for_initiate(id_session)
         
-        Args:
-            session_id: ID de la sesión
-            new_content: Nuevo content a agregar/actualizar
-            new_configs: Nuevos configs a agregar/actualizar
-            session_type: Tipo de sesión (opcional, para establecer el tipo)
-            
-        Returns:
-            Dict con datos de sesión actualizada
-            
-        Raises:
-            ValueError: Si la sesión no es válida
-        """
-        session = SessionService.validate_session_for_initiate(session_id)
-        
-        # Merge simple: existing + new (manejar None correctamente)
-        existing_content = session.get('content') or {}
-        existing_configs = session.get('configs') or {}
-        
-        merged_content = {**existing_content, **(new_content or {})}
-        merged_configs = {**existing_configs, **(new_configs or {})}
+        # Usar el nuevo contenido si se proporciona, sino mantener el existente
+        final_content = new_content if new_content is not None else session.get('content', {})
+        final_configs = new_configs if new_configs is not None else session.get('configs', {})
         
         # Actualizar usando la función existente
         updated_session = update_session_db(
-            session_id=session_id,
+            id_session=id_session,
             type_value=session_type or session.get('type'),
             status=session.get('status', 'new'),
-            content=merged_content,
-            configs=merged_configs
+            content=final_content,
+            configs=final_configs
         )
         
         if not updated_session:
@@ -190,24 +116,15 @@ class SessionService:
         return updated_session
     
     @staticmethod
-    def complete_session_with_summary(session_id: str, conversation_summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Finaliza una sesión agregando el resumen de conversación
-        
-        Args:
-            session_id: ID de la sesión
-            conversation_summary: Resumen de la conversación
-            
-        Returns:
-            Dict con datos de sesión actualizada o None si hay error
-        """
+    def complete_session_with_summary(id_session: str, conversation_summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Finaliza una sesión agregando el resumen de conversación"""
         try:
-            logger.info(f"📝 Finalizando sesión {session_id} con resumen...")
+            logger.info(f"📝 Finalizando sesión {id_session} con resumen...")
             
             # Obtener sesión actual
-            session_data = get_session_db(session_id)
+            session_data = get_session_db(id_session)
             if not session_data:
-                logger.error(f"❌ No se pudo obtener datos de sesión: {session_id}")
+                logger.error(f"❌ No se pudo obtener datos de sesión: {id_session}")
                 return None
             
             # Actualizar content con resumen
@@ -217,7 +134,7 @@ class SessionService:
             
             # Actualizar estado en BD
             updated_session = update_session_db(
-                session_id=session_id,
+                id_session=id_session,
                 type_value=session_data.get('type', 'unknown'),
                 status="complete",
                 content=final_content,
@@ -225,12 +142,12 @@ class SessionService:
             )
             
             if updated_session:
-                logger.info(f"✅ Sesión finalizada: {session_id}")
+                logger.info(f"✅ Sesión finalizada: {id_session}")
                 return updated_session
             else:
-                logger.warning(f"⚠️ No se pudo actualizar estado de sesión: {session_id}")
+                logger.warning(f"⚠️ No se pudo actualizar estado de sesión: {id_session}")
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Error finalizando sesión {session_id}: {str(e)}")
+            logger.error(f"❌ Error finalizando sesión {id_session}: {str(e)}")
             return None 

@@ -44,7 +44,7 @@ async def create_session(
     
     # Crear sesión básica usando el servicio (solo con credenciales)
     try:
-        session = AuthService.create_user_session(username=username)
+        session = AuthService.create_user_session()
         
         return {"id_session": session['id_session']}
         

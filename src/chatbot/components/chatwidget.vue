@@ -94,13 +94,13 @@
         }
 
         this.connectionState = 'connecting';
-        console.log(`🔗 Conectando a WebSocket desde chat-ui:`, this.websocket_url);
+        console.log(`🔗 Conectando a WebSocket:`, this.websocket_url);
         
         try {
           this.ws = new WebSocket(this.websocket_url);
           
           this.ws.onopen = () => {
-            console.log('✅ Conectado al agente desde chat-ui');
+            console.log('✅ Conectado al agente');
             this.connectionState = 'connected';
             this.reconnectAttempts = 0;
           };

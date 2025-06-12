@@ -26,7 +26,6 @@ class AuthService:
     
     @staticmethod
     def create_user_session(
-        username: str,
         session_type: Optional[str] = None,
         content: Optional[Dict[str, Any]] = None,
         configs: Optional[Dict[str, Any]] = None
@@ -35,7 +34,6 @@ class AuthService:
         Crea una nueva sesión para un usuario autenticado
         
         Args:
-            username: Usuario autenticado
             session_type: Tipo de sesión opcional
             content: Contenido de la sesión
             configs: Configuraciones de la sesión
@@ -46,11 +44,11 @@ class AuthService:
         Raises:
             Exception: Si hay error al crear la sesión
         """
-        logger.info(f"Creando sesión para usuario: {username}")
+        logger.info("Creando nueva sesión")
         
         session = create_session_db(
             type_value=session_type,
-            content={"username": username, **(content or {})},
+            content=content,
             configs=configs
         )
         

@@ -122,13 +122,13 @@ yarn build
 
 #### Autenticación
 - `POST /api/chat/session/auth` - Crear nueva sesión con autenticación básica
-- `GET /api/chat/session/{session_id}` - Obtener información de una sesión existente
+- `GET /api/chat/session/{id_session}` - Obtener información de una sesión existente
 - `POST /api/chat/service/initiate` - Inicializar servicio en sesión existente
 
 #### Chat Conversacional
-- `WebSocket /api/chat/ws/{session_id}` - Conexión WebSocket para chat
+- `WebSocket /api/chat/ws/{id_session}` - Conexión WebSocket para chat
 - `POST /api/chat/session/start` - Iniciar sesión de chat
-- `GET /api/chat/session/{session_id}/status` - Obtener estado de sesión
+- `GET /api/chat/session/{id_session}/status` - Obtener estado de sesión
 
 ### Documentación Interactiva
 Una vez ejecutando el servidor, visita:

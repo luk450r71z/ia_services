@@ -4,15 +4,18 @@ from langchain_groq import ChatGroq
 import os
 import datetime
 import json
+import logging
 
 from ..models.conversation_models import ConversationState
 from ..utils.env_utils import load_env_variables
+
+logger = logging.getLogger(__name__)
 
 # Cargar variables de entorno al importar el módulo
 load_env_variables()
 
 
-class QuestionarieRHAgent:
+class QuestionnaireRHAgent:
     """
     Agente conversacional de RRHH.
     
@@ -20,21 +23,37 @@ class QuestionarieRHAgent:
     recopila respuestas, decide cuándo repreguntar y envía resúmenes por correo.
     """
     
-    def __init__(self, questions: List[Any] = None):
+    def __init__(self, content: Dict[str, Any] = None):
         """
         Inicializa el agente de RRHH.
         
         Args:
-            questions: Lista de preguntas (pueden ser strings o dicts con opciones)
+            content: Contenido completo de la sesión (username, questions, etc.)
         """
         self.state = ConversationState()
         self.initialized = False
         
-        # Usar extract_questions para manejar cualquier formato
-        if questions:
-            self.questions_data = self.extract_questions(questions)
-            self.questions = [q["question"] for q in self.questions_data]
-        else:
+        # Extraer username del content
+        self.username = ""
+        if content:
+            self.username = content.get('username', '')
+        
+        # Debug: Log del content recibido
+        logger.info(f"🔧 DEBUG: Inicializando agente con username='{self.username}' y questions_data={len(content.get('questions', []) if content else [])} preguntas")
+        
+        # Extraer y procesar questions del content
+        questions_data = content.get('questions', []) if content else []
+        try:
+            if questions_data:
+                self.questions_data = self.extract_questions(questions_data)
+                self.questions = [q["question"] for q in self.questions_data]
+                logger.info(f"✅ Preguntas extraídas exitosamente: {len(self.questions)} preguntas")
+            else:
+                self.questions_data = []
+                self.questions = []
+                logger.warning("⚠️ No se proporcionaron preguntas en el content")
+        except Exception as e:
+            logger.error(f"❌ Error extrayendo preguntas: {str(e)}")
             self.questions_data = []
             self.questions = []
         
@@ -133,19 +152,17 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         Inicia una nueva conversación.
         
         Args:
-            session_data: Datos de la sesión (opcional, para personalización)
+            session_data: Datos de la sesión (opcional, no usado ya que el username se carga en __init__)
         
         Returns:
             Mensaje inicial del agente
         """
-        # Extraer username si está disponible
-        username = ""
-        if session_data and 'content' in session_data:
-            content = session_data['content']
-            username = content.get('username', '')
+        # Debug: Log del estado del agente
+        logger.info(f"🔧 DEBUG: start_conversation - username='{self.username}', questions_count={len(self.questions)}")
         
         # Verificar que hay preguntas configuradas
         if not self.questions:
+            logger.error("❌ No hay preguntas configuradas en el agente")
             return "Error: No se han configurado preguntas para esta entrevista. Por favor, contacta al administrador."
         
         # Configurar estado inicial
@@ -153,8 +170,10 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         self.state.current_question_index = 0
         self.state.current_question = self.questions[0]
         
-        # Mensaje de bienvenida personalizado
-        greeting = f"¡Hola {username}!" if username else "¡Hola!"
+        # Mensaje de bienvenida personalizado usando el username almacenado
+        greeting = f"¡Hola {self.username}!" if self.username else "¡Hola!"
+        logger.info(f"🔧 DEBUG: Greeting generado: '{greeting}'")
+        
         welcome_content = f"""{greeting} Soy el asistente de RRHH de Adaptiera. 
 Voy a realizarte algunas preguntas para conocerte mejor.
 Responde con la mayor sinceridad posible.
@@ -412,14 +431,14 @@ Siguiente pregunta:
 
 
 # Función de conveniencia para crear una instancia del agente
-def create_questionarie_rh_agent(questions: List[str] = None) -> QuestionarieRHAgent:
+def create_questionnaire_rh_agent(content: Dict[str, Any] = None) -> QuestionnaireRHAgent:
     """
     Crea una nueva instancia del agente de RRHH simplificado.
     
     Args:
-        questions: Lista de preguntas específicas para la entrevista
+        content: Contenido completo de la sesión (username, questions, etc.)
     
     Returns:
         Instancia del agente configurada
     """
-    return QuestionarieRHAgent(questions) 
+    return QuestionnaireRHAgent(content) 

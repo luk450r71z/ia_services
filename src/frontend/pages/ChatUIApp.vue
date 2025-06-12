@@ -104,13 +104,6 @@ const avatarConfig = ref({
 })
 
 
-
-// Función para obtener session_id de la URL
-const getSessionId = () => {
-  const urlParams = new URLSearchParams(window.location.search)
-  return urlParams.get('session_id') || urlParams.get('id_session')
-}
-
 // Función para configurar avatar desde WebSocket
 const handleUIConfigMessage = (data) => {
   console.log('📥 ChatUIApp recibió evento ui-config:', data)
@@ -152,35 +145,15 @@ onMounted(() => {
 const getWebSocketUrl = () => {
   const urlParams = new URLSearchParams(window.location.search)
   
-  // Opción 1: Construir URL desde session_id (NUEVO MÉTODO PRINCIPAL)
-  const sessionId = urlParams.get('session_id') || urlParams.get('id_session')
-  if (sessionId) {
-    const wsUrl = `ws://localhost:8000/api/chat/questionnarie/start/${sessionId}`
-    console.log('🔗 URL de WebSocket construida desde session_id:', wsUrl)
+  // Obtener id_session de los parámetros de URL
+  const idSession = urlParams.get('id_session')
+  if (idSession) {
+            const wsUrl = `ws://localhost:8000/api/chat/questionnaire/start/${idSession}`
+    console.log('🔗 URL de WebSocket construida desde id_session:', wsUrl)
     return wsUrl
   }
   
-  // Opción 2: Desde parámetros de URL completa (método anterior)
-  const wsUrl = urlParams.get('ws_url') || urlParams.get('websocket_url')
-  if (wsUrl) {
-    console.log('🔗 URL de WebSocket obtenida desde parámetros de URL')
-    return wsUrl
-  }
-  
-  // Opción 3: Desde variable global
-  if (window.WEBSOCKET_URL) {
-    console.log('🔗 URL de WebSocket obtenida desde variable global')
-    return window.WEBSOCKET_URL
-  }
-  
-  // Opción 4: Desde hash de la URL
-  const hash = window.location.hash.substring(1)
-  if (hash && (hash.startsWith('ws://') || hash.startsWith('wss://'))) {
-    console.log('🔗 URL de WebSocket obtenida desde hash de URL')
-    return hash
-  }
-  
-  throw new Error('No se encontró session_id o URL de WebSocket. Proporciona el session_id mediante: ?session_id=... o la URL completa mediante: ?ws_url=...')
+  throw new Error('No se encontró id_session. Proporciona el id_session mediante: ?id_session=...')
 }
 
 // Función principal del chat-ui (simplificada)

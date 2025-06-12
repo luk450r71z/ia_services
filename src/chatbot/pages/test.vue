@@ -41,23 +41,13 @@ import ChatWidget from '../components/ChatWidget.vue'
 import { ref, reactive } from 'vue'
 
 // Configuración centralizada
-const config = {
+const config_auth = {
   apiBase: 'http://localhost:8000',
   credentials: {
     user: 'fabian',
     password: 'secure_password'
   },
-  type: 'questionnarie',
-  defaultQuestions: [
-    "¿Cuáles son tus principales fortalezas técnicas?",
-    "¿Por qué te interesa trabajar en esta posición?",
-    "¿Tienes alguna pregunta para nosotros?"
-  ],
-  configs: {
-    webhook_url: "",
-    email: ["santiago.ferrero@adaptiera.team", "lucas.ortiz@adaptiera.team"],
-    avatar: false,
-  }
+  type: 'questionnaire',
 }
 
 // Estados simplificados
@@ -72,12 +62,22 @@ const chatSession = reactive({
 })
 
 // Función simplificada para obtener preguntas
-const getQuestions = async () => {
+const getContent = async () => {
   try {
-    const response = await fetch('/questions.json')
-    return response.ok ? await response.json() : config.defaultQuestions
+    const response = await fetch('/content.json')
+    return response.ok ? await response.json() : []
   } catch {
-    return config.defaultQuestions
+    return []
+  }
+}
+
+// Función para obtener configuración
+const getConfig = async () => {
+  try {
+    const response = await fetch('/config.json')
+    return response.ok ? await response.json() : {}
+  } catch {
+    return {}
   }
 }
 
@@ -88,8 +88,9 @@ const iniciarConversacion = async () => {
   loading.value = true
   
   try {
-    const questions = await getQuestions()
-    const sessionData = await createAndInitializeSession(questions)
+    const content = await getContent()
+    const config = await getConfig()
+    const sessionData = await createAndInitializeSession(content, config)
     
     chatSession.websocketUrl = sessionData.urls?.websocket_url
     
@@ -106,11 +107,11 @@ const iniciarConversacion = async () => {
 }
 
 // Función unificada para crear e inicializar sesión
-const createAndInitializeSession = async (questions) => {
+const createAndInitializeSession = async (content, config) => {
   // Paso 1: Autenticación (solo credenciales)
-  const credentials = btoa(`${config.credentials.user}:${config.credentials.password}`)
+  const credentials = btoa(`${config_auth.credentials.user}:${config_auth.credentials.password}`)
   
-  const authResponse = await fetch(`${config.apiBase}/api/chat/session/auth`, {
+  const authResponse = await fetch(`${config_auth.apiBase}/api/chat/session/auth`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -126,7 +127,7 @@ const createAndInitializeSession = async (questions) => {
   const authData = await authResponse.json()
   
   // Paso 2: Inicializar servicio con configuración de sesión
-  const initResponse = await fetch(`${config.apiBase}/api/chat/${config.type}/initiate`, {
+  const initResponse = await fetch(`${config_auth.apiBase}/api/chat/${config_auth.type}/initiate`, {
     method: 'POST',
     headers: {
       'accept': 'application/json',
@@ -134,8 +135,8 @@ const createAndInitializeSession = async (questions) => {
     },
     body: JSON.stringify({
       id_session: authData.id_session,
-      content: { questions },
-      configs: config.configs
+      content: content,
+      configs: config
     })
   })
   

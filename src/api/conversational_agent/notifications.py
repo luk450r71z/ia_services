@@ -66,12 +66,12 @@ class NotificationManager:
                 logger.error(f"❌ Error importando requests: {e}")
                 raise
     
-    async def send_completion_notifications(self, session_id: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, bool]:
+    async def send_completion_notifications(self, id_session: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, bool]:
         """
         Envía notificaciones de finalización de conversación según la configuración.
         
         Args:
-            session_id: ID de la sesión
+            id_session: ID de la sesión
             session_data: Datos completos de la sesión
             conversation_summary: Resumen de la conversación del agente
             
@@ -86,58 +86,58 @@ class NotificationManager:
         
         configs = session_data.get('configs', {})
         if not configs:
-            logger.info(f"📭 No hay configuraciones de notificación para sesión {session_id}")
+            logger.info(f"📭 No hay configuraciones de notificación para sesión {id_session}")
             return results
         
         # Preparar datos de la notificación
-        notification_data = self._prepare_notification_data(session_id, session_data, conversation_summary)
+        notification_data = self._prepare_notification_data(id_session, session_data, conversation_summary)
         
         # Enviar emails si están configurados
         emails = configs.get('emails', [])
         if emails and isinstance(emails, list) and len(emails) > 0:
-            logger.info(f"📧 Enviando emails a {len(emails)} destinatarios para sesión {session_id}")
+            logger.info(f"📧 Enviando emails a {len(emails)} destinatarios para sesión {id_session}")
             try:
                 email_success = await self._send_email_notifications(emails, notification_data)
                 results["emails_sent"] = email_success
                 if email_success:
-                    logger.info(f"✅ Emails enviados exitosamente para sesión {session_id}")
+                    logger.info(f"✅ Emails enviados exitosamente para sesión {id_session}")
                 else:
-                    logger.warning(f"⚠️ Error enviando emails para sesión {session_id}")
+                    logger.warning(f"⚠️ Error enviando emails para sesión {id_session}")
                     results["errors"].append("Error enviando emails")
             except Exception as e:
-                logger.error(f"❌ Error en envío de emails para sesión {session_id}: {str(e)}")
+                logger.error(f"❌ Error en envío de emails para sesión {id_session}: {str(e)}")
                 results["errors"].append(f"Error emails: {str(e)}")
         
         # Enviar webhook si está configurado
         webhook_url = configs.get('webhook')
         if webhook_url and isinstance(webhook_url, str) and webhook_url.strip():
-            logger.info(f"🔗 Enviando webhook para sesión {session_id} a: {webhook_url}")
+            logger.info(f"🔗 Enviando webhook para sesión {id_session} a: {webhook_url}")
             try:
                 webhook_success = await self._send_webhook_notification(webhook_url, notification_data)
                 results["webhook_sent"] = webhook_success
                 if webhook_success:
-                    logger.info(f"✅ Webhook enviado exitosamente para sesión {session_id}")
+                    logger.info(f"✅ Webhook enviado exitosamente para sesión {id_session}")
                 else:
-                    logger.warning(f"⚠️ Error enviando webhook para sesión {session_id}")
+                    logger.warning(f"⚠️ Error enviando webhook para sesión {id_session}")
                     results["errors"].append("Error enviando webhook")
             except Exception as e:
-                logger.error(f"❌ Error en envío de webhook para sesión {session_id}: {str(e)}")
+                logger.error(f"❌ Error en envío de webhook para sesión {id_session}: {str(e)}")
                 results["errors"].append(f"Error webhook: {str(e)}")
         
         # Log del resultado general
         if results["emails_sent"] or results["webhook_sent"]:
-            logger.info(f"📬 Notificaciones enviadas para sesión {session_id}: emails={results['emails_sent']}, webhook={results['webhook_sent']}")
+            logger.info(f"📬 Notificaciones enviadas para sesión {id_session}: emails={results['emails_sent']}, webhook={results['webhook_sent']}")
         else:
-            logger.info(f"📭 No se enviaron notificaciones para sesión {session_id}")
+            logger.info(f"📭 No se enviaron notificaciones para sesión {id_session}")
             
         return results
     
-    def _prepare_notification_data(self, session_id: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, Any]:
+    def _prepare_notification_data(self, id_session: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, Any]:
         """
         Prepara los datos que serán enviados en las notificaciones.
         
         Args:
-            session_id: ID de la sesión
+            id_session: ID de la sesión
             session_data: Datos de la sesión
             conversation_summary: Resumen de la conversación
             
@@ -157,7 +157,7 @@ class NotificationManager:
             created_at_str = None
             
         return {
-            "session_id": session_id,
+            "id_session": id_session,
             "session_type": session_data.get('type', 'unknown'),
             "completed_at": datetime.utcnow().isoformat(),
             "created_at": created_at_str,
@@ -186,7 +186,7 @@ class NotificationManager:
         
         try:
             # Crear mensaje
-            subject = f"Conversación Completada - Sesión {notification_data['session_id']}"
+            subject = f"Conversación Completada - Sesión {notification_data['id_session']}"
             body = self._generate_email_body(notification_data)
             
             # Configurar servidor SMTP
@@ -271,7 +271,7 @@ class NotificationManager:
         Returns:
             HTML del email
         """
-        session_id = notification_data['session_id']
+        id_session = notification_data['id_session']
         session_type = notification_data['session_type']
         completed_at = notification_data['completed_at']
         summary = notification_data['conversation_summary']
@@ -297,7 +297,7 @@ class NotificationManager:
                 
                 <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
                     <h2>📊 Información de la Sesión</h2>
-                    <p><strong>ID de Sesión:</strong> {session_id}</p>
+                    <p><strong>ID de Sesión:</strong> {id_session}</p>
                     <p><strong>Tipo:</strong> {session_type}</p>
                     <p><strong>Completada:</strong> {completed_at}</p>
                     <p><strong>Preguntas Realizadas:</strong> {summary.get('questions_asked', 'N/A')}</p>
