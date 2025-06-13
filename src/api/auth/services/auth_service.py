@@ -8,19 +8,19 @@ from auth.db.sqlite_db import create_session_db
 logger = logging.getLogger(__name__)
 
 class AuthService:
-    """Servicio para manejar autenticación y creación de sesiones"""
+    """Service for handling authentication and session creation"""
     
     @staticmethod
     def validate_credentials(username: str, password: str) -> bool:
         """
-        Valida credenciales de usuario
+        Validates user credentials
         
         Args:
-            username: Nombre de usuario
-            password: Contraseña
+            username: Username
+            password: Password
             
         Returns:
-            bool: True si las credenciales son válidas
+            bool: True if credentials are valid
         """
         return username in USERS and compare_digest(USERS[username], password)
     
@@ -31,20 +31,20 @@ class AuthService:
         configs: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Crea una nueva sesión para un usuario autenticado
+        Creates a new session for an authenticated user
         
         Args:
-            session_type: Tipo de sesión opcional
-            content: Contenido de la sesión
-            configs: Configuraciones de la sesión
+            session_type: Optional session type
+            content: Session content
+            configs: Session configurations
             
         Returns:
-            Dict con información de la sesión creada
+            Dict with created session information
             
         Raises:
-            Exception: Si hay error al crear la sesión
+            Exception: If there's an error creating the session
         """
-        logger.info("Creando nueva sesión")
+        logger.info("Creating new session")
         
         session = create_session_db(
             type_value=session_type,
@@ -53,7 +53,7 @@ class AuthService:
         )
         
         if not session:
-            raise Exception("No se pudo crear la sesión en la base de datos")
+            raise Exception("Could not create session in database")
         
-        logger.info(f"Sesión creada exitosamente: {session['id_session']}")
+        logger.info(f"Session created successfully: {session['id_session']}")
         return session 

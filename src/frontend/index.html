@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat IA - Frontend</title>
+    <title>AI Chat - Frontend</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
-    <meta name="description" content="Frontend de Chat IA sin autenticación - conexión directa por WebSocket">
-    <meta name="keywords" content="chat, ia, frontend, websocket, sin autenticacion">
+    <meta name="description" content="AI Chat Frontend without authentication - direct WebSocket connection">
+    <meta name="keywords" content="chat, ai, frontend, websocket, no authentication">
     <style>
         * {
             margin: 0;
@@ -145,28 +145,28 @@
     <div id="preloader" class="preloader">
         <div class="preloader-content">
             <div class="preloader-spinner"></div>
-            <h1>🤖 Chat IA</h1>
-            <p>Conectando al WebSocket...</p>
-            <div class="status">Sin autenticación | Powered by Adaptiera</div>
+            <h1>🤖 AI Chat</h1>
+            <p>Connecting to WebSocket...</p>
+            <div class="status">No authentication | Powered by Adaptiera</div>
         </div>
     </div>
     
-    <!-- Error de carga (oculto por defecto) -->
+    <!-- Load Error (hidden by default) -->
     <div id="loadError" class="load-error" style="display: none;">
-        <h2>❌ Error de Conexión</h2>
-        <p id="errorMessage">No se pudo cargar el frontend de chat IA</p>
-        <p>Verifica tu conexión a internet y que el servidor esté disponible.</p>
-        <button onclick="location.reload()">🔄 Reintentar Conexión</button>
+        <h2>❌ Connection Error</h2>
+        <p id="errorMessage">Could not load AI chat frontend</p>
+        <p>Please check your internet connection and ensure the server is available.</p>
+        <button onclick="location.reload()">🔄 Retry Connection</button>
     </div>
     
-    <!-- Contenedor principal de la aplicación Vue -->
+    <!-- Main Vue application container -->
     <div id="app"></div>
     
     <script type="module">
-        // Variables globales para el manejo del preloader
+        // Global variables for preloader handling
         let preloaderHidden = false;
         
-        // Función para ocultar el preloader
+        // Function to hide preloader
         function hidePreloader() {
             if (preloaderHidden) return;
             
@@ -180,14 +180,14 @@
             }
         }
         
-        // Función para mostrar error de carga
+        // Function to show load error
         function showLoadError(message) {
             document.getElementById('errorMessage').textContent = message;
             document.getElementById('loadError').style.display = 'block';
             hidePreloader();
         }
         
-        // Función para actualizar el estado del preloader
+        // Function to update preloader status
         function updatePreloaderStatus(status) {
             const statusElement = document.querySelector('.preloader .status');
             if (statusElement) {
@@ -195,51 +195,51 @@
             }
         }
         
-        // Inicio del frontend
-        console.log('🚀 Iniciando Frontend Chat IA...');
-        updatePreloaderStatus('Cargando componentes Vue...');
+        // Frontend startup
+        console.log('🚀 Starting AI Chat Frontend...');
+        updatePreloaderStatus('Loading Vue components...');
         
         try {
-            // Importar y ejecutar el frontend
+            // Import and execute frontend
             import('./chat-ui.js').then(() => {
-                updatePreloaderStatus('Conectando con el servidor...');
+                updatePreloaderStatus('Connecting to server...');
                 
-                // Esperar un momento para que Vue se inicialice
+                // Wait a moment for Vue to initialize
                 setTimeout(() => {
-                    updatePreloaderStatus('¡Listo!');
+                    updatePreloaderStatus('Ready!');
                     setTimeout(() => {
                         hidePreloader();
-                        console.log('✅ Frontend cargado correctamente');
+                        console.log('✅ Frontend loaded successfully');
                     }, 800);
                 }, 1200);
                 
             }).catch(error => {
-                console.error('❌ Error al importar el frontend:', error);
-                showLoadError(`Error de importación: ${error.message}`);
+                console.error('❌ Error importing frontend:', error);
+                showLoadError(`Import error: ${error.message}`);
             });
             
         } catch (error) {
-            console.error('❌ Error al cargar el frontend:', error);
-            showLoadError(`Error de inicialización: ${error.message}`);
+            console.error('❌ Error loading frontend:', error);
+            showLoadError(`Initialization error: ${error.message}`);
         }
         
-        // Manejo de errores no capturados
+        // Unhandled error handling
         window.addEventListener('error', (event) => {
-            console.error('❌ Error no capturado:', event.error);
+            console.error('❌ Unhandled error:', event.error);
             if (!preloaderHidden) {
-                showLoadError(`Error de ejecución: ${event.error?.message || 'Error desconocido'}`);
+                showLoadError(`Runtime error: ${event.error?.message || 'Unknown error'}`);
             }
         });
         
         window.addEventListener('unhandledrejection', (event) => {
-            console.error('❌ Promesa rechazada no manejada:', event.reason);
+            console.error('❌ Unhandled promise rejection:', event.reason);
             if (!preloaderHidden) {
-                showLoadError(`Error de conexión: ${event.reason?.message || 'No se pudo conectar con el servidor'}`);
+                showLoadError(`Connection error: ${event.reason?.message || 'Could not connect to server'}`);
             }
         });
         
-        // Información del frontend en consola
-        console.log('%c🤖 Frontend Chat IA v1.0.0', 'color: #667eea; font-size: 16px; font-weight: bold;');
+        // Frontend information in console
+        console.log('%c🤖 AI Chat Frontend v1.0.0', 'color: #667eea; font-size: 16px; font-weight: bold;');
         console.log('%cPowered by Adaptiera Team', 'color: #764ba2; font-size: 12px;');
     </script>
 </body>

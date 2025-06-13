@@ -6,9 +6,9 @@
           :key="index" 
           :class="['message', message.role]"
         >
-          <strong v-if="message.role === 'user'">👤 Tú:</strong>
-          <strong v-else-if="message.role === 'agent'">🤖 Agente:</strong>
-          <strong v-else-if="message.role === 'system'">⚠️ Sistema:</strong>
+          <strong v-if="message.role === 'user'">👤 You:</strong>
+          <strong v-else-if="message.role === 'agent'">🤖 Agent:</strong>
+          <strong v-else-if="message.role === 'system'">⚠️ System:</strong>
           {{ message.content }}
         </div>
       </div>
@@ -31,15 +31,15 @@
       </div>
       
       <div v-if="connectionState === 'connecting'" class="connection-status">
-        Conectando al servidor...
+        Connecting to server...
       </div>
       
       <div v-if="connectionState === 'reconnecting'" class="connection-status">
-        Reintentando conexión...
+        Retrying connection...
       </div>
       
       <div v-if="conversationCompleted" class="completion-status">
-        ✅ Conversación completada. El chat se cerrará automáticamente.
+        ✅ Conversation completed. The chat will close automatically.
       </div>
     </div>
   </template>
@@ -74,18 +74,18 @@
       },
       inputPlaceholder() {
         if (this.disabled || this.conversationCompleted) {
-          return 'La conversación ha finalizado';
+          return 'The conversation has ended';
         }
-        return 'Escribe tu respuesta...';
+        return 'Type your response...';
       },
       buttonText() {
-        if (this.disabled || this.conversationCompleted) return 'Finalizado';
-        if (this.connectionState === 'connected') return 'Enviar';
-        return 'Conectando...';
+        if (this.disabled || this.conversationCompleted) return 'Ended';
+        if (this.connectionState === 'connected') return 'Send';
+        return 'Connecting...';
       }
     },
     mounted() {
-      console.log(`🚀 ChatWidget montado para chat-ui URL: ${this.websocket_url}`);
+      console.log(`🚀 ChatWidget mounted for chat-ui URL: ${this.websocket_url}`);
       this.connectWebSocket();
     },
     beforeUnmount() {
@@ -94,18 +94,18 @@
     methods: {
       connectWebSocket() {
         if (!this.websocket_url) {
-          this.addMessage('system', 'Error: URL de WebSocket no proporcionada');
+          this.addMessage('system', 'Error: WebSocket URL not provided');
           return;
         }
 
         this.connectionState = 'connecting';
-        console.log(`🔗 Conectando a WebSocket desde chat-ui:`, this.websocket_url);
+        console.log(`🔗 Connecting to WebSocket from chat-ui:`, this.websocket_url);
         
         try {
           this.ws = new WebSocket(this.websocket_url);
           
           this.ws.onopen = () => {
-            console.log('✅ Conectado al agente desde chat-ui');
+            console.log('✅ Connected to agent from chat-ui');
             this.connectionState = 'connected';
             this.reconnectAttempts = 0;
           };
@@ -120,32 +120,32 @@
           };
           
           this.ws.onclose = (event) => {
-            console.log('🔌 WebSocket desconectado, código:', event.code);
+            console.log('🔌 WebSocket disconnected, code:', event.code);
             this.connectionState = 'disconnected';
             
-            // Códigos que NO deben reconectar (errores permanentes)
+            // Codes that should NOT reconnect (permanent errors)
             if ([4001, 4004, 403, 401].includes(event.code)) {
-              this.addMessage('system', 'Conexión cerrada por el servidor');
+              this.addMessage('system', 'Connection closed by server');
               return;
             }
             
-            // Reconexión automática si la conversación no terminó
+            // Automatic reconnection if conversation hasn't ended
             if (!this.conversationCompleted && this.reconnectAttempts < this.maxReconnectAttempts) {
               this.attemptReconnect();
             } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-              this.addMessage('system', 'No se pudo restablecer la conexión');
+              this.addMessage('system', 'Could not restore connection');
             }
           };
           
           this.ws.onerror = (error) => {
-            console.error('❌ Error de WebSocket:', error);
+            console.error('❌ WebSocket error:', error);
             this.connectionState = 'disconnected';
           };
           
         } catch (error) {
-          console.error('❌ Error al conectar WebSocket:', error);
+          console.error('❌ Error connecting to WebSocket:', error);
           this.connectionState = 'disconnected';
-          this.addMessage('system', `Error al conectar: ${error.message}`);
+          this.addMessage('system', `Connection error: ${error.message}`);
         }
       },
       
@@ -153,8 +153,8 @@
         this.reconnectAttempts++;
         this.connectionState = 'reconnecting';
         
-        const delay = Math.min(2000 * this.reconnectAttempts, 8000); // Delay progresivo
-        console.log(`🔄 Reintentando conexión en ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        const delay = Math.min(2000 * this.reconnectAttempts, 8000); // Progressive delay
+        console.log(`🔄 Retrying connection in ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         
         setTimeout(() => {
           this.connectWebSocket();
@@ -162,7 +162,7 @@
       },
       
       handleWebSocketMessage(data) {
-        console.log('📨 ChatWidget recibió mensaje:', data.type, data);
+        console.log('📨 ChatWidget received message:', data.type, data);
         
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
@@ -170,16 +170,16 @@
           
           if (isComplete) {
             this.conversationCompleted = true;
-            console.log('🔒 Conversación completada en chat-ui');
+            console.log('🔒 Conversation completed in chat-ui');
             this.$emit('conversation-complete', data.data.summary);
           }
         } else if (data.type === 'ui_config') {
-          console.log('🔧 ChatWidget recibió ui_config:', data);
+          console.log('🔧 ChatWidget received ui_config:', data);
           this.$emit('ui-config', data);
         } else if (data.type === 'system') {
           this.addMessage('system', data.content);
         } else if (data.type === 'error') {
-          console.error('❌ Error del servidor:', data.content);
+          console.error('❌ Server error:', data.content);
           this.addMessage('system', `Error: ${data.content}`);
         }
       },
@@ -194,7 +194,7 @@
       
       handleSendMessage() {
         if (this.disabled || this.conversationCompleted) {
-          this.addMessage('system', 'La conversación ha finalizado. No se pueden enviar más mensajes.');
+          this.addMessage('system', 'The conversation has ended. No more messages can be sent.');
           this.userInput = '';
           return;
         }
@@ -208,7 +208,7 @@
           this.ws.send(JSON.stringify({ content: message }));
           this.$emit('message-sent', message);
         } else {
-          this.addMessage('system', 'No hay conexión. Reintentando...');
+          this.addMessage('system', 'No connection. Retrying...');
           this.attemptReconnect();
         }
         
@@ -248,189 +248,114 @@
   }
   
   .messages-area {
-    height: 450px;
+    height: calc(100vh - 180px);
     overflow-y: auto;
-    border: 2px solid #e0e7ff;
-    border-radius: 15px;
     padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
     margin-bottom: 20px;
-    background: linear-gradient(135deg, #fafbff 0%, #f0f4ff 100%);
   }
   
   .message {
-    margin: 15px 0;
-    padding: 15px 18px;
-    border-radius: 18px;
+    margin-bottom: 15px;
+    padding: 12px 16px;
+    border-radius: 12px;
     max-width: 85%;
     word-wrap: break-word;
-    color: #2d3748;
-    font-size: 15px;
-    line-height: 1.5;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    animation: fadeInUp 0.3s ease-out;
   }
   
   .message.user {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #007bff;
     color: white;
     margin-left: auto;
-    text-align: right;
-    border-bottom-right-radius: 6px;
   }
   
   .message.agent {
-    background: linear-gradient(135deg, #f1f8e9 0%, #e8f5e8 100%);
+    background: #e9ecef;
+    color: #212529;
     margin-right: auto;
-    border-bottom-left-radius: 6px;
-    border-left: 4px solid #4caf50;
   }
   
   .message.system {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    background: #dc3545;
+    color: white;
     margin: 10px auto;
     text-align: center;
-    border-radius: 12px;
-    color: #856404;
-    font-style: italic;
     max-width: 95%;
-    border: 1px solid #ffc107;
   }
   
   .input-container {
     display: flex;
-    gap: 15px;
-    align-items: flex-end;
-    padding: 15px;
-    background: rgba(0, 0, 0, 0.02);
-    border-radius: 15px;
+    gap: 10px;
+    position: relative;
   }
   
-  #user-input {
+  textarea {
     flex: 1;
-    min-height: 60px;
-    padding: 15px 18px;
-    border: 2px solid #e0e7ff;
+    padding: 12px;
+    border: 2px solid #dee2e6;
     border-radius: 12px;
-    resize: vertical;
+    resize: none;
+    height: 60px;
     font-family: inherit;
-    font-size: 15px;
-    background: white;
-    transition: all 0.3s ease;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
   }
   
-  #user-input:focus {
+  textarea:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #007bff;
+  }
+  
+  textarea:disabled {
+    background: #e9ecef;
+    cursor: not-allowed;
   }
   
   .send-button {
-    padding: 15px 25px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 0 25px;
+    background: #007bff;
     color: white;
     border: none;
     border-radius: 12px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 15px;
     transition: all 0.3s ease;
-    min-width: 100px;
   }
   
   .send-button:hover:not(:disabled) {
+    background: #0056b3;
     transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
   }
   
   .send-button:disabled {
-    background: #cbd5e0;
+    background: #6c757d;
     cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-  
-  .connection-status, .completion-status {
-    text-align: center;
-    padding: 12px 20px;
-    border-radius: 10px;
-    margin-top: 15px;
-    font-weight: 600;
-    font-size: 14px;
   }
   
   .connection-status {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-    border: 1px solid #ffc107;
-    color: #856404;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    z-index: 1000;
   }
   
   .completion-status {
-    background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
-    border: 1px solid #17a2b8;
-    color: #0c5460;
-  }
-  
-  .messages-area::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  .messages-area::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
-  }
-  
-  .messages-area::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 4px;
-  }
-  
-  .messages-area::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-  }
-  
-  @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  /* Responsive design */
-  @media (max-width: 768px) {
-    .chat-container {
-      padding: 15px;
-    }
-    
-    .messages-area {
-      height: 350px;
-      padding: 15px;
-    }
-    
-    .message {
-      max-width: 95%;
-      padding: 12px 15px;
-      font-size: 14px;
-    }
-    
-    .input-container {
-      padding: 10px;
-      gap: 10px;
-    }
-    
-    #user-input {
-      min-height: 50px;
-      padding: 12px 15px;
-      font-size: 14px;
-    }
-    
-    .send-button {
-      padding: 12px 20px;
-      min-width: 80px;
-      font-size: 14px;
-    }
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(40, 167, 69, 0.9);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    z-index: 1000;
   }
   </style> 

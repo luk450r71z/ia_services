@@ -4,33 +4,33 @@ from pydantic import BaseModel, Field
 
 
 class ConversationState(BaseModel):
-    """Estado del agente conversacional que mantiene el contexto de la conversación"""
+    """Conversational agent state that maintains the conversation context"""
     
-    # Historial de mensajes de la conversación
+    # Conversation message history
     messages: List[BaseMessage] = Field(default_factory=list)
     
-    # Preguntas pendientes por hacer
+    # Pending questions to be asked
     pending_questions: List[str] = Field(default_factory=list)
     
-    # Respuestas del usuario recopiladas
+    # User responses collected
     user_responses: Dict[str, str] = Field(default_factory=dict)
     
-    # Pregunta actual que se está procesando
+    # Current question being processed
     current_question: Optional[str] = None
     
-    # Índice de la pregunta actual
+    # Index of the current question
     current_question_index: int = 0
     
-    # Flag para indicar si necesita repreguntar
+    # Flag to indicate if clarification is needed
     needs_clarification: bool = False
     
-    # Razón por la cual necesita aclaración
+    # Reason why clarification is needed
     clarification_reason: Optional[str] = None
     
-    # Flag para indicar si la conversación ha terminado
+    # Flag to indicate if the conversation has ended
     conversation_complete: bool = False
     
-    # Datos adicionales que pueden ser útiles
+    # Additional data that may be useful
     extra_data: Dict[str, Any] = Field(default_factory=dict)
     
     class Config:

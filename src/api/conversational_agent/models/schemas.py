@@ -8,7 +8,7 @@ class ServiceType(str, Enum):
     QUESTIONNAIRE = "questionnaire"
 
 class SessionStatus(str, Enum):
-    """Estados posibles de una sesión"""
+    """Possible session states"""
     NEW = "new"
     INITIATED = "initiated"
     STARTED = "started"
@@ -45,7 +45,7 @@ class WebSocketMessageType(str, Enum):
     UI_CONFIG = "ui_config"
 
 class WebSocketMessage(BaseModel):
-    """Modelo para mensajes WebSocket"""
+    """Model for WebSocket messages"""
     type: WebSocketMessageType
     content: Optional[str] = None
     id_session: Optional[str] = Field(None, min_length=1)
@@ -56,7 +56,7 @@ class WebSocketMessage(BaseModel):
         use_enum_values = True
 
 class ChatSession(BaseModel):
-    """Modelo para sesiones de chat"""
+    """Model for chat sessions"""
     id_session: str = Field(..., min_length=1)
     created_at: datetime
     is_active: bool = True

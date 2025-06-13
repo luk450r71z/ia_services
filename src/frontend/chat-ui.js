@@ -1,49 +1,49 @@
 import { createApp } from 'vue'
 import ChatUIApp from './pages/ChatUIApp.vue'
 
-console.log('🤖 Iniciando Chat UI...')
+console.log('🤖 Starting Chat UI...')
 
-// Configuraciones globales del chat-ui
+// Global chat-ui configurations
 const config = {
   name: 'Chat UI',
   version: '1.0.0',
   author: 'Adaptiera Team',
   environment: import.meta.env.MODE || 'development',
-  description: 'Chat UI independiente servido desde webui_url del endpoint questionnaire/initiate'
+  description: 'Independent Chat UI served from webui_url of questionnaire/initiate endpoint'
 }
 
-console.log('📋 Configuración del chat-ui:', config)
+console.log('📋 Chat UI configuration:', config)
 
-// Crear aplicación Vue
+// Create Vue application
 const app = createApp(ChatUIApp)
 
-// Propiedades globales
+// Global properties
 app.config.globalProperties.$config = config
 
-// Configuración de desarrollo
+// Development configuration
 if (config.environment === 'development') {
   app.config.devtools = true
-  console.log('🔧 Modo desarrollo activado')
+  console.log('🔧 Development mode activated')
 }
 
-// Manejo de errores global
+// Global error handling
 app.config.errorHandler = (error, vm, info) => {
-  console.error('❌ Error global de Vue:', error)
-  console.error('📍 Información del error:', info)
-  console.error('🔧 Instancia del componente:', vm)
+  console.error('❌ Vue global error:', error)
+  console.error('📍 Error information:', info)
+  console.error('🔧 Component instance:', vm)
   
-  // En producción, podrías enviar errores a un servicio de monitoreo
+  // In production, you could send errors to a monitoring service
   if (config.environment === 'production') {
-    // Aquí podrías integrar con servicios como Sentry, LogRocket, etc.
-    console.log('📊 Error reportado al sistema de monitoreo')
+    // Here you could integrate with services like Sentry, LogRocket, etc.
+    console.log('📊 Error reported to monitoring system')
   }
 }
 
-// Montaje de la aplicación
+// Application mounting
 try {
   app.mount('#app')
-  console.log('✅ Chat UI montado correctamente en #app')
-  console.log('🌐 Servicio disponible desde webui_url')
+  console.log('✅ Chat UI successfully mounted in #app')
+  console.log('🌐 Service available from webui_url')
 } catch (error) {
-  console.error('❌ Error al montar el chat UI:', error)
+  console.error('❌ Error mounting chat UI:', error)
 } 

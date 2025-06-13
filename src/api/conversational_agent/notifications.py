@@ -36,9 +36,16 @@ class NotificationManager:
         
         # Log de configuración (sin mostrar contraseñas)
         if self.smtp_username:
-            logger.info(f"📧 SMTP configurado: {self.smtp_username}@{self.smtp_server}:{self.smtp_port}")
+            logger.info(f"📧 SMTP configured: {self.smtp_username}@{self.smtp_server}:{self.smtp_port}")
         else:
-            logger.warning(f"⚠️ SMTP_USERNAME no configurado - las notificaciones por email no funcionarán")
+            logger.warning(f"⚠️ SMTP_USERNAME not configured - email notifications will not work")
+        
+        # Configurar webhook
+        self.webhook_url = get_env_variable("WEBHOOK_URL")
+        if self.webhook_url:
+            logger.info(f"🔗 Webhook client initialized")
+        else:
+            logger.warning(f"⚠️ WEBHOOK_URL not configured - webhook notifications will not work")
     
     def _initialize_smtp(self):
         """Inicializa las importaciones SMTP solo cuando se necesitan"""
@@ -49,10 +56,13 @@ class NotificationManager:
                 from email.mime.text import MIMEText
                 from email.mime.multipart import MIMEMultipart
                 self._smtp_initialized = True
-                logger.info(f"📧 SMTP inicializado - {self.smtp_server}:{self.smtp_port}")
+                self.smtp = smtplib
+                self.mime_text = MIMEText
+                self.mime_multipart = MIMEMultipart
+                logger.info(f"�� SMTP initialized - {self.smtp_server}:{self.smtp_port}")
             except ImportError as e:
-                logger.error(f"❌ Error importando módulos SMTP: {e}")
-                raise
+                logger.error(f"❌ Error importing SMTP modules: {e}")
+                self.smtp = None
     
     def _initialize_webhook(self):
         """Inicializa las importaciones de requests solo cuando se necesitan"""
@@ -61,12 +71,13 @@ class NotificationManager:
                 global requests
                 import requests
                 self._webhook_initialized = True
-                logger.info(f"🔗 Webhook client inicializado")
+                self.requests = requests
+                logger.info(f"🔗 Webhook client initialized")
             except ImportError as e:
-                logger.error(f"❌ Error importando requests: {e}")
-                raise
+                logger.error(f"❌ Error importing requests: {e}")
+                self.requests = None
     
-    async def send_completion_notifications(self, id_session: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, bool]:
+    async def send_completion_notifications(self, id_session: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, Any]:
         """
         Envía notificaciones de finalización de conversación según la configuración.
         
@@ -78,249 +89,126 @@ class NotificationManager:
         Returns:
             Dict con el resultado de cada tipo de notificación
         """
-        results = {
-            "emails_sent": False,
-            "webhook_sent": False,
-            "errors": []
-        }
-        
-        configs = session_data.get('configs', {})
-        if not configs:
-            logger.info(f"📭 No hay configuraciones de notificación para sesión {id_session}")
-            return results
-        
-        # Preparar datos de la notificación
-        notification_data = self._prepare_notification_data(id_session, session_data, conversation_summary)
-        
-        # Enviar emails si están configurados
-        emails = configs.get('emails', [])
-        if emails and isinstance(emails, list) and len(emails) > 0:
-            logger.info(f"📧 Enviando emails a {len(emails)} destinatarios para sesión {id_session}")
-            try:
-                email_success = await self._send_email_notifications(emails, notification_data)
-                results["emails_sent"] = email_success
-                if email_success:
-                    logger.info(f"✅ Emails enviados exitosamente para sesión {id_session}")
-                else:
-                    logger.warning(f"⚠️ Error enviando emails para sesión {id_session}")
-                    results["errors"].append("Error enviando emails")
-            except Exception as e:
-                logger.error(f"❌ Error en envío de emails para sesión {id_session}: {str(e)}")
-                results["errors"].append(f"Error emails: {str(e)}")
-        
-        # Enviar webhook si está configurado
-        webhook_url = configs.get('webhook')
-        if webhook_url and isinstance(webhook_url, str) and webhook_url.strip():
-            logger.info(f"🔗 Enviando webhook para sesión {id_session} a: {webhook_url}")
-            try:
-                webhook_success = await self._send_webhook_notification(webhook_url, notification_data)
-                results["webhook_sent"] = webhook_success
-                if webhook_success:
-                    logger.info(f"✅ Webhook enviado exitosamente para sesión {id_session}")
-                else:
-                    logger.warning(f"⚠️ Error enviando webhook para sesión {id_session}")
-                    results["errors"].append("Error enviando webhook")
-            except Exception as e:
-                logger.error(f"❌ Error en envío de webhook para sesión {id_session}: {str(e)}")
-                results["errors"].append(f"Error webhook: {str(e)}")
-        
-        # Log del resultado general
-        if results["emails_sent"] or results["webhook_sent"]:
-            logger.info(f"📬 Notificaciones enviadas para sesión {id_session}: emails={results['emails_sent']}, webhook={results['webhook_sent']}")
-        else:
-            logger.info(f"📭 No se enviaron notificaciones para sesión {id_session}")
-            
-        return results
-    
-    def _prepare_notification_data(self, id_session: str, session_data: Dict, conversation_summary: Dict) -> Dict[str, Any]:
-        """
-        Prepara los datos que serán enviados en las notificaciones.
-        
-        Args:
-            id_session: ID de la sesión
-            session_data: Datos de la sesión
-            conversation_summary: Resumen de la conversación
-            
-        Returns:
-            Diccionario con todos los datos para la notificación
-        """
-        # Manejar created_at que puede ser string o datetime
-        created_at = session_data.get('created_at')
-        if created_at:
-            if hasattr(created_at, 'isoformat'):
-                # Es un objeto datetime
-                created_at_str = created_at.isoformat()
-            else:
-                # Ya es una cadena
-                created_at_str = str(created_at)
-        else:
-            created_at_str = None
-            
-        return {
-            "id_session": id_session,
-            "session_type": session_data.get('type', 'unknown'),
-            "completed_at": datetime.utcnow().isoformat(),
-            "created_at": created_at_str,
-            "conversation_summary": conversation_summary,
-            "content": session_data.get('content', {}),
-            "status": session_data.get('status', 'complete')
-        }
-    
-    async def _send_email_notifications(self, email_list: List[str], notification_data: Dict) -> bool:
-        """
-        Envía notificaciones por email a la lista de destinatarios.
-        
-        Args:
-            email_list: Lista de emails destino
-            notification_data: Datos de la notificación
-            
-        Returns:
-            True si se enviaron exitosamente, False en caso contrario
-        """
-        if not self.smtp_username or not self.smtp_password:
-            logger.warning("📧 Credenciales SMTP no configuradas - no se pueden enviar emails")
-            return False
-        
-        # Inicializar SMTP solo cuando se necesita
-        self._initialize_smtp()
-        
         try:
-            # Crear mensaje
-            subject = f"Conversación Completada - Sesión {notification_data['id_session']}"
-            body = self._generate_email_body(notification_data)
+            # Obtener configuraciones de notificación
+            notification_config = session_data.get("notification_config")
+            if not notification_config:
+                logger.info(f"📭 No notification settings for session {id_session}")
+                return {"emails_sent": 0, "webhook_sent": False}
             
-            # Configurar servidor SMTP
-            server = smtplib.SMTP(self.smtp_server, self.smtp_port)
-            server.starttls()
-            server.login(self.smtp_username, self.smtp_password)
-            
-            # Enviar a cada destinatario
-            successful_sends = 0
-            for email in email_list:
-                try:
-                    msg = MIMEMultipart()
-                    msg['From'] = self.from_email
-                    msg['To'] = email
-                    msg['Subject'] = subject
-                    
-                    msg.attach(MIMEText(body, 'html'))
-                    
-                    server.send_message(msg)
-                    successful_sends += 1
-                    logger.info(f"📧 Email enviado exitosamente a: {email}")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Error enviando email a {email}: {str(e)}")
-            
-            server.quit()
-            
-            # Considerar exitoso si se envió al menos un email
-            success = successful_sends > 0
-            logger.info(f"📊 Emails enviados: {successful_sends}/{len(email_list)}")
-            return success
-            
-        except Exception as e:
-            logger.error(f"❌ Error configurando servidor SMTP: {str(e)}")
-            return False
-    
-    async def _send_webhook_notification(self, webhook_url: str, notification_data: Dict) -> bool:
-        """
-        Envía notificación via webhook.
-        
-        Args:
-            webhook_url: URL del webhook
-            notification_data: Datos de la notificación
-            
-        Returns:
-            True si se envió exitosamente, False en caso contrario
-        """
-        # Inicializar requests solo cuando se necesita
-        self._initialize_webhook()
-        
-        try:
-            headers = {
-                'Content-Type': 'application/json',
-                'User-Agent': 'Adaptiera-ConversationalAgent/1.0'
+            results = {
+                "emails_sent": 0,
+                "webhook_sent": False,
+                "errors": []
             }
             
-            response = requests.post(
-                webhook_url,
-                json=notification_data,
-                headers=headers,
-                timeout=30
-            )
+            # Enviar emails
+            emails = notification_config.get("emails", [])
+            if emails:
+                logger.info(f"📧 Sending emails to {len(emails)} recipients for session {id_session}")
+                
+                try:
+                    self._send_completion_emails(emails, session_data, conversation_summary)
+                    results["emails_sent"] = len(emails)
+                    logger.info(f"✅ Emails sent successfully for session {id_session}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error sending emails for session {id_session}")
+                    results["errors"].append(f"Email error: {str(e)}")
+                    logger.error(f"❌ Error in email sending for session {id_session}: {str(e)}")
             
-            if response.status_code in [200, 201, 202]:
-                logger.info(f"🔗 Webhook enviado exitosamente - Status: {response.status_code}")
-                return True
+            # Enviar webhook
+            webhook_url = notification_config.get("webhook_url")
+            if webhook_url:
+                logger.info(f"🔗 Sending webhook for session {id_session} to: {webhook_url}")
+                
+                try:
+                    self._send_completion_webhook(webhook_url, session_data, conversation_summary)
+                    results["webhook_sent"] = True
+                    logger.info(f"✅ Webhook sent successfully for session {id_session}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Error sending webhook for session {id_session}")
+                    results["errors"].append(f"Webhook error: {str(e)}")
+                    logger.error(f"❌ Error in webhook sending for session {id_session}: {str(e)}")
+            
+            if results["emails_sent"] > 0 or results["webhook_sent"]:
+                logger.info(f"📬 Notifications sent for session {id_session}: emails={results['emails_sent']}, webhook={results['webhook_sent']}")
             else:
-                logger.warning(f"⚠️ Webhook respondió con status: {response.status_code}")
-                return False
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Error enviando webhook: {str(e)}")
-            return False
-    
-    def _generate_email_body(self, notification_data: Dict) -> str:
-        """
-        Genera el cuerpo del email con los datos de la conversación.
-        
-        Args:
-            notification_data: Datos de la notificación
+                logger.info(f"📭 No notifications sent for session {id_session}")
             
-        Returns:
-            HTML del email
-        """
-        id_session = notification_data['id_session']
-        session_type = notification_data['session_type']
-        completed_at = notification_data['completed_at']
-        summary = notification_data['conversation_summary']
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending notifications: {str(e)}")
+            return {"emails_sent": 0, "webhook_sent": False, "errors": [str(e)]}
+    
+    def _send_completion_emails(self, email_list: List[str], session_data: Dict, conversation_summary: Dict):
+        """Sends completion emails to a list of recipients"""
+        if not self.smtp or not self.smtp_username or not self.smtp_password:
+            logger.warning("📧 SMTP credentials not configured - cannot send emails")
+            return
         
-        # Formatear respuestas si existen
-        responses_html = ""
-        if 'responses' in summary and summary['responses']:
-            responses_html = "<h3>📝 Respuestas Recopiladas:</h3><ul>"
-            for question, answer in summary['responses'].items():
-                responses_html += f"<li><strong>P:</strong> {question}<br><strong>R:</strong> {answer}</li><br>"
-            responses_html += "</ul>"
+        # Crear mensaje
+        message = self.mime_multipart()
+        message["Subject"] = f"Interview Completed - Session {session_data['id_session']}"
+        message["From"] = self.smtp_username
+        message["To"] = ", ".join(email_list)
         
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Conversación Completada</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h1 style="color: #2c5aa0;">🎯 Conversación Completada</h1>
-                
-                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <h2>📊 Información de la Sesión</h2>
-                    <p><strong>ID de Sesión:</strong> {id_session}</p>
-                    <p><strong>Tipo:</strong> {session_type}</p>
-                    <p><strong>Completada:</strong> {completed_at}</p>
-                    <p><strong>Preguntas Realizadas:</strong> {summary.get('questions_asked', 'N/A')}</p>
-                    <p><strong>Total de Mensajes:</strong> {summary.get('messages_count', 'N/A')}</p>
-                </div>
-                
-                {responses_html}
-                
-                <div style="background-color: #e8f4fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <h3>🔗 Resumen Técnico</h3>
-                    <pre style="background-color: #f9f9f9; padding: 10px; border-radius: 4px; overflow-x: auto;">
-{json.dumps(summary, indent=2, ensure_ascii=False)}
-                    </pre>
-                </div>
-                
-                <hr style="margin: 30px 0;">
-                <p style="color: #666; font-size: 12px;">
-                    Este email fue generado automáticamente por el sistema de agentes conversacionales de Adaptiera.
-                </p>
-            </div>
-        </body>
-        </html>
+        # Crear contenido
+        content = f"""
+        Interview completed for session {session_data['id_session']}
+        
+        Summary:
+        - Questions asked: {conversation_summary['questions_asked']}
+        - Total questions: {conversation_summary['total_questions']}
+        - Completion time: {conversation_summary['completion_time']}
+        
+        Responses:
+        {json.dumps(conversation_summary['responses'], indent=2)}
         """
+        
+        message.attach(self.mime_text(content))
+        
+        # Enviar emails
+        successful_sends = 0
+        for email in email_list:
+            try:
+                with self.smtp.SMTP(self.smtp_server, self.smtp_port) as server:
+                    server.starttls()
+                    server.login(self.smtp_username, self.smtp_password)
+                    server.send_message(message)
+                    successful_sends += 1
+                    logger.info(f"📧 Email sent successfully to: {email}")
+            except Exception as e:
+                logger.error(f"❌ Error sending email to {email}: {str(e)}")
+        
+        logger.info(f"📊 Emails sent: {successful_sends}/{len(email_list)}")
+
+    def _send_completion_webhook(self, webhook_url: str, session_data: Dict, conversation_summary: Dict):
+        """Sends completion webhook"""
+        if not self.requests:
+            logger.warning("🔗 Requests module not available - cannot send webhook")
+            return
+        
+        try:
+            # Preparar payload
+            payload = {
+                "session_id": session_data["id_session"],
+                "service_type": session_data["service_type"],
+                "completion_time": conversation_summary["completion_time"],
+                "responses": conversation_summary["responses"]
+            }
+            
+            # Enviar webhook
+            response = self.requests.post(webhook_url, json=payload)
+            
+            if response.status_code == 200:
+                logger.info(f"🔗 Webhook sent successfully - Status: {response.status_code}")
+            else:
+                logger.warning(f"⚠️ Webhook responded with status: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error sending webhook: {str(e)}")
+            raise
 
 # Instancia global del notification manager con inicialización perezosa
 _notification_manager_instance = None
@@ -333,7 +221,7 @@ def get_notification_manager():
     global _notification_manager_instance
     if _notification_manager_instance is None:
         _notification_manager_instance = NotificationManager()
-        logger.info("📬 NotificationManager instanciado (lazy loading)")
+        logger.info("📬 NotificationManager instantiated (lazy loading)")
     return _notification_manager_instance
 
 # Clase proxy para inicialización completamente perezosa

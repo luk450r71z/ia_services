@@ -7,71 +7,71 @@ from ..notifications import notification_manager
 logger = logging.getLogger(__name__)
 
 class ConversationalAgent(Protocol):
-    """Protocolo que define la interfaz para agentes conversacionales"""
+    """Protocol that defines the interface for conversational agents"""
     def start_conversation(self, session_data: Dict = None) -> str:
-        """Inicia la conversación y retorna el mensaje de bienvenida"""
+        """Starts the conversation and returns the welcome message"""
         ...
     
     def process_user_input(self, user_input: str) -> str:
-        """Procesa el input del usuario y retorna la respuesta del agente"""
+        """Processes user input and returns the agent's response"""
         ...
     
     def is_conversation_complete(self) -> bool:
-        """Verifica si la conversación ha terminado"""
+        """Checks if the conversation has ended"""
         ...
     
     def get_conversation_summary(self) -> Dict[str, Any]:
-        """Obtiene un resumen de la conversación"""
+        """Gets a summary of the conversation"""
         ...
 
 class ConversationManager:
-    """Maneja toda la lógica conversacional: agentes, sesiones y procesamiento de mensajes"""
+    """Manages all conversational logic: agents, sessions and message processing"""
     
     def __init__(self):
         self.active_agents: Dict[str, ConversationalAgent] = {}
     
     async def initialize_conversation(self, id_session: str, session_data: Dict = None) -> Optional[str]:
-        """Inicializa una conversación creando el agente y retornando mensaje de bienvenida"""
+        """Initializes a conversation by creating the agent and returning the welcome message"""
         try:
-            # Usar datos proporcionados o obtener de BD
+            # Use provided data or get from DB
             if not session_data:
                 session_data = SessionService.get_session(id_session)
                 
             if not session_data:
-                logger.error(f"❌ No se encontró sesión en BD: {id_session}")
+                logger.error(f"❌ Session not found in DB: {id_session}")
                 return None
             
-            # Crear agente
+            # Create agent
             agent = self._create_agent(session_data)
             if not agent:
                 return None
              
-            # Guardar agente y obtener mensaje de bienvenida
+            # Save agent and get welcome message
             self.active_agents[id_session] = agent
             welcome_message = agent.start_conversation()
             
-            logger.info(f"🤖 Conversación inicializada para sesión: {id_session}")
+            logger.info(f"🤖 Conversation initialized for session: {id_session}")
             return welcome_message
             
         except Exception as e:
-            logger.error(f"❌ Error inicializando conversación {id_session}: {str(e)}")
+            logger.error(f"❌ Error initializing conversation {id_session}: {str(e)}")
             return None
     
     async def process_user_message(self, id_session: str, message: str) -> Dict[str, Any]:
-        """Procesa un mensaje del usuario y maneja toda la lógica conversacional"""
+        """Processes a user message and handles all conversational logic"""
         try:
-            logger.info(f"💬 Procesando mensaje de usuario en sesión {id_session}: {message[:50]}...")
+            logger.info(f"💬 Processing user message in session {id_session}: {message[:50]}...")
             
-            # Obtener agente
+            # Get agent
             agent = self.active_agents.get(id_session)
             if not agent:
-                raise ValueError(f"No hay agente activo para sesión: {id_session}")
+                raise ValueError(f"No active agent for session: {id_session}")
             
-            # Procesar mensaje con el agente
+            # Process message with agent
             agent_response = agent.process_user_input(message)
             is_complete = agent.is_conversation_complete()
             
-            # Si está completa, finalizar sesión
+            # If complete, finalize session
             summary = None
             if is_complete:
                 summary = await self._complete_session(id_session, agent)
@@ -84,7 +84,7 @@ class ConversationManager:
             }
             
         except Exception as e:
-            logger.error(f"❌ Error procesando mensaje de usuario en sesión {id_session}: {str(e)}")
+            logger.error(f"❌ Error processing user message in session {id_session}: {str(e)}")
             raise
     
     def _create_agent(self, session_data: Dict) -> Optional[ConversationalAgent]:
@@ -112,20 +112,20 @@ class ConversationManager:
             return None
     
     async def _complete_session(self, id_session: str, agent: ConversationalAgent) -> Optional[Dict[str, Any]]:
-        """Finaliza una sesión actualizando estado y enviando notificaciones"""
+        """Finalizes a session by updating state and sending notifications"""
         try:
-            logger.info(f"📝 Finalizando sesión {id_session}...")
+            logger.info(f"📝 Finalizing session {id_session}...")
             
-            # Obtener resumen de la conversación
+            # Get conversation summary
             conversation_summary = agent.get_conversation_summary()
             
-            # Actualizar sesión con resumen
+            # Update session with summary
             updated_session = SessionService.complete_session_with_summary(id_session, conversation_summary)
             
             if updated_session:
-                logger.info(f"✅ Sesión finalizada: {id_session}")
+                logger.info(f"✅ Session finalized: {id_session}")
                 
-                # Enviar notificaciones
+                # Send notifications
                 try:
                     notification_results = await notification_manager.send_completion_notifications(
                         id_session=id_session,
@@ -134,21 +134,21 @@ class ConversationManager:
                     )
                     
                     if notification_results.get("emails_sent") or notification_results.get("webhook_sent"):
-                        logger.info(f"📬 Notificaciones enviadas para sesión {id_session}")
+                        logger.info(f"📬 Notifications sent for session {id_session}")
                     
                     if notification_results.get("errors"):
-                        logger.warning(f"⚠️ Errores en notificaciones: {notification_results['errors']}")
+                        logger.warning(f"⚠️ Notification errors: {notification_results['errors']}")
                         
                 except Exception as notification_error:
-                    logger.error(f"❌ Error enviando notificaciones: {str(notification_error)}")
+                    logger.error(f"❌ Error sending notifications: {str(notification_error)}")
                 
                 return conversation_summary
             else:
-                logger.warning(f"⚠️ No se pudo actualizar estado de sesión: {id_session}")
+                logger.warning(f"⚠️ Could not update session state: {id_session}")
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Error finalizando sesión {id_session}: {str(e)}")
+            logger.error(f"❌ Error finalizing session {id_session}: {str(e)}")
             return None
     
     def _remove_agent(self, id_session: str):

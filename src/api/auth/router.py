@@ -20,8 +20,8 @@ async def create_session(
     credentials: HTTPBasicCredentials = Depends(security)
 ) -> dict:
     """
-    Crear una nueva sesión usando HTTP Basic Auth.
-    Solo maneja autenticación - la configuración se envía al endpoint de inicialización.
+    Create a new session using HTTP Basic Auth.
+    Only handles authentication - configuration is sent to the initialization endpoint.
     
     Returns:
         dict: {"id_session": str}
@@ -29,30 +29,30 @@ async def create_session(
     username = credentials.username
     password = credentials.password
 
-    logger.info(f"Intento de autenticación para usuario: {username}")
+    logger.info(f"Authentication attempt for user: {username}")
 
-    # Validar credenciales usando el servicio
+    # Validate credentials using the service
     if not AuthService.validate_credentials(username, password):
-        logger.warning(f"Intento de autenticación inválido para usuario: {username}")
+        logger.warning(f"Invalid authentication attempt for user: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales de autenticación inválidas",
+            detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Basic"},
         )
     
-    logger.info(f"Usuario {username} autenticado exitosamente")
+    logger.info(f"User {username} successfully authenticated")
     
-    # Crear sesión básica usando el servicio (solo con credenciales)
+    # Create basic session using the service (only with credentials)
     try:
         session = AuthService.create_user_session()
         
         return {"id_session": session['id_session']}
         
     except Exception as e:
-        logger.error(f"Error al crear sesión: {str(e)}")
+        logger.error(f"Error creating session: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al crear sesión: {str(e)}"
+            detail=f"Error creating session: {str(e)}"
         )
 
 

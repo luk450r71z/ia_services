@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
+import json
 
 from auth.db.sqlite_db import get_session_db, update_session_db
 
@@ -13,18 +14,18 @@ class SessionService:
     
     @staticmethod
     def _validate_session_expiration(session: Dict[str, Any]) -> bool:
-        """Valida si una sesión no ha expirado (5 minutos)"""
+        """Valida si una sesión no ha expirado (5 minutes)"""
         try:
             created_at = session['created_at']
             if isinstance(created_at, str):
                 created_at = datetime.fromisoformat(created_at)
             elif not isinstance(created_at, datetime):
-                logger.error(f"Formato de fecha inválido en sesión: {created_at}")
+                logger.error(f"Invalid date format in session: {created_at}")
                 return False
             
             return datetime.utcnow() - created_at <= timedelta(minutes=5)
         except (KeyError, ValueError) as e:
-            logger.error(f"Error validando expiración de sesión: {str(e)}")
+            logger.error(f"Error validating session expiration: {str(e)}")
             return False
 
     @staticmethod
@@ -32,12 +33,12 @@ class SessionService:
         """Valida sesión para WebSocket - debe estar 'initiated' o 'started' y no expirada"""
         session = get_session_db(id_session)
         if not session:
-            logger.warning(f"Sesión no encontrada: {id_session}")
+            logger.warning(f"Session not found: {id_session}")
             return None
         
         # Verificar expiración
         if not SessionService._validate_session_expiration(session):
-            logger.warning(f"Sesión expirada: {id_session}")
+            logger.warning(f"Session expirada: {id_session}")
             return None
         
         # Debe estar initiated para poder iniciar WebSocket

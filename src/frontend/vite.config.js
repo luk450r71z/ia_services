@@ -1,20 +1,18 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
   server: {
     port: 8080,
-    host: '0.0.0.0', // Permite acceso desde cualquier IP
-    strictPort: true,
-    open: true
+    host: true
   },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    rollupOptions: {
-      input: 'index.html'
-    }
-  },
-  base: './' // Para rutas relativas en producción
+    emptyOutDir: true,
+    sourcemap: true,
+    base: './' // For relative paths in production
+  }
 }) 

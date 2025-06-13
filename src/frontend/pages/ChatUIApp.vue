@@ -1,35 +1,35 @@
 <template>
   <div class="chat-ui-container">
-    <!-- Estado de carga -->
+    <!-- Loading state -->
     <div v-if="loading" class="loading-section">
       <div class="loading-spinner"></div>
       <h2>{{ loadingMessage }}</h2>
       <p class="connection-info">
-        Estado: <span class="status" :class="connectionState">{{ connectionState }}</span>
+        Status: <span class="status" :class="connectionState">{{ connectionState }}</span>
       </p>
     </div>
 
-    <!-- Estado de error -->
+    <!-- Error state -->
     <div v-else-if="error && !chatSession.isActive" class="error-section">
-      <h2>❌ Error de Conexión</h2>
+      <h2>❌ Connection Error</h2>
       <p class="error-message">{{ error }}</p>
       <div class="error-actions">
-        <button @click="iniciarChatUI" class="retry-button">
-          🔄 Reintentar Conexión
+        <button @click="startChatUI" class="retry-button">
+          🔄 Retry Connection
         </button>
       </div>
     </div>
 
-    <!-- Estado de chat activo o completado -->
+    <!-- Active or completed chat state -->
     <div v-else-if="chatSession.isActive || chatSession.completed" class="chat-section">
       <div class="header">
         <div class="header-main">
           <div class="header-text">
-            <h1 class="header-title">🤖 Chat IA</h1>
-            <p class="header-subtitle">Chat UI Independiente - Adaptiera</p>
+            <h1 class="header-title">🤖 AI Chat</h1>
+            <p class="header-subtitle">Independent Chat UI - Adaptiera</p>
           </div>
           
-          <!-- Avatar independiente del ChatWidget -->
+          <!-- Avatar independent from ChatWidget -->
           <div v-if="showAvatar" class="header-avatar">
             <Avatar 
               :name="avatarConfig.name"
@@ -43,17 +43,17 @@
         <div class="connection-status">
           <span class="status-indicator" :class="connectionState"></span>
           <span class="status-text">
-            {{ chatSession.completed ? 'Conversación Finalizada' : 
-               connectionState === 'connected' ? 'Conectado' : 'Conectando...' }}
+            {{ chatSession.completed ? 'Conversation Ended' : 
+               connectionState === 'connected' ? 'Connected' : 'Connecting...' }}
           </span>
         </div>
         
-        <!-- DEBUG: Mostrar estado de configuración -->
+        <!-- DEBUG: Show configuration status -->
         <div class="debug-info">
           <small>
             👤 Avatar: {{ showAvatar ? 'ON' : 'OFF' }}
-            {{ avatarConfig.url ? ` | 🖼️ Con imagen` : ` | 📝 Solo iniciales` }}
-            {{ chatSession.completed ? ' | 🔒 Chat Finalizado' : '' }}
+            {{ avatarConfig.url ? ` | 🖼️ With image` : ` | 📝 Initials only` }}
+            {{ chatSession.completed ? ' | 🔒 Chat Ended' : '' }}
           </small>
         </div>
       </div>
@@ -68,7 +68,7 @@
       />
 
       <div class="footer">
-        <small>Chat UI sin autenticación | Powered by Adaptiera Team</small>
+        <small>Chat UI without authentication | Powered by Adaptiera Team</small>
       </div>
     </div>
   </div>
@@ -79,13 +79,13 @@ import ChatWidget from '../components/ChatWidget.vue'
 import Avatar from '../components/Avatar.vue'
 import { ref, reactive, onMounted, computed } from 'vue'
 
-// Estados del chat-ui
+// Chat UI states
 const loading = ref(false)
 const error = ref('')
 const connectionState = ref('disconnected')
-const loadingMessage = ref('Preparando conexión...')
+const loadingMessage = ref('Preparing connection...')
 
-// Estado de sesión
+// Session state
 const chatSession = reactive({
   websocketUrl: '',
   isActive: false,
@@ -93,112 +93,105 @@ const chatSession = reactive({
   startTime: null
 })
 
-
-
-// Configuración de Avatar
+// Avatar configuration
 const showAvatar = ref(false)
 const avatarConfig = ref({
   show: false,
   url: null,
-  name: 'Asistente IA'
+  name: 'AI Assistant'
 })
 
-
-// Función para configurar avatar desde WebSocket
+// Function to configure avatar from WebSocket
 const handleUIConfigMessage = (data) => {
-  console.log('📥 ChatUIApp recibió evento ui-config:', data)
+  console.log('📥 ChatUIApp received ui-config event:', data)
   if (data.type === 'ui_config' && data.data) {
     const avatarData = data.data.avatar
     
     if (typeof avatarData === 'boolean') {
-      // Configuración simple: solo true/false
+      // Simple configuration: true/false only
       showAvatar.value = avatarData
       avatarConfig.value.show = avatarData
-      console.log('👤 Avatar:', showAvatar.value ? 'habilitado' : 'deshabilitado')
+      console.log('👤 Avatar:', showAvatar.value ? 'enabled' : 'disabled')
     } else if (typeof avatarData === 'object' && avatarData !== null) {
-      // Configuración avanzada: objeto con propiedades
+      // Advanced configuration: object with properties
       showAvatar.value = Boolean(avatarData.show)
       avatarConfig.value = {
         show: showAvatar.value,
         url: avatarData.url || avatarData.image || null,
-        name: avatarData.name || 'Asistente IA'
+        name: avatarData.name || 'AI Assistant'
       }
-      console.log('👤 Avatar configurado:', avatarConfig.value)
+      console.log('👤 Avatar configured:', avatarConfig.value)
     } else {
       showAvatar.value = false
       avatarConfig.value.show = false
-      console.log('👤 Avatar deshabilitado')
+      console.log('👤 Avatar disabled')
     }
   } else {
-    console.log('⚠️ ui_config inválido:', data)
+    console.log('⚠️ Invalid ui_config:', data)
   }
 }
 
-// Inicialización automática al montar el componente
+// Automatic initialization when component is mounted
 onMounted(() => {
-  console.log('🚀 Chat UI iniciado desde webui_url')
+  console.log('🚀 Chat UI started from webui_url')
   chatSession.startTime = new Date()
-  iniciarChatUI()
+  startChatUI()
 })
 
-// Función para obtener la URL del WebSocket
+// Function to get WebSocket URL
 const getWebSocketUrl = () => {
-  // Extraer id_session de la ruta, asumiendo formato /{id_session}
+  // Extract id_session from path, assuming format /{id_session}
   const pathParts = window.location.pathname.split('/').filter(Boolean)
-  const idSession = pathParts[0] // Primer segmento después de /
+  const idSession = pathParts[0] // First segment after /
   if (idSession) {
     const wsUrl = `ws://localhost:8000/api/chat/questionnaire/start/${idSession}`
-    console.log('🔗 URL de WebSocket construida desde pathname:', wsUrl)
+    console.log('🔗 WebSocket URL built from pathname:', wsUrl)
     return wsUrl
   }
-  throw new Error('No se encontró id_session en la ruta. Usa una URL como http://localhost:8080/{id_session}')
+  throw new Error('No id_session found in route. Use a URL like http://localhost:8080/{id_session}')
 }
 
-// Función principal del chat-ui (simplificada)
-const iniciarChatUI = async () => {
+// Main chat UI function (simplified)
+const startChatUI = async () => {
   error.value = ''
   loading.value = true
   connectionState.value = 'connecting'
   
   try {
-    loadingMessage.value = 'Obteniendo URL de WebSocket...'
+    loadingMessage.value = 'Getting WebSocket URL...'
     chatSession.websocketUrl = getWebSocketUrl()
-    console.log('🔗 URL de WebSocket configurada:', chatSession.websocketUrl)
+    console.log('🔗 WebSocket URL configured:', chatSession.websocketUrl)
     
-    loadingMessage.value = 'Conectando...'
+    loadingMessage.value = 'Connecting...'
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    console.log('✅ Chat UI listo')
+    console.log('✅ Chat UI ready')
     chatSession.isActive = true
     connectionState.value = 'connected'
     
   } catch (err) {
-    console.error('❌ Error en chat UI:', err)
-    error.value = err.message || 'Error al inicializar el chat UI'
+    console.error('❌ Error in chat UI:', err)
+    error.value = err.message || 'Error initializing chat UI'
     connectionState.value = 'error'
   } finally {
     loading.value = false
   }
 }
 
-
-
-// Manejadores de eventos
+// Event handlers
 const onConversationComplete = (summary) => {
-  console.log('🏁 Conversación completada:', summary)
+  console.log('🏁 Conversation completed:', summary)
   
-  // Marcar conversación como completada sin cambiar la vista
+  // Mark conversation as completed without changing view
   chatSession.completed = true
   connectionState.value = 'completed'
   error.value = ''
-  console.log('🔒 Chat bloqueado - conversación finalizada')
+  console.log('🔒 Chat locked - conversation ended')
 }
 
 const onMessageSent = (message) => {
-  console.log('📤 Mensaje enviado desde chat UI:', message)
+  console.log('📤 Message sent from chat UI:', message)
 }
-
-
 </script>
 
 <style scoped>
@@ -234,8 +227,6 @@ const onMessageSent = (message) => {
   animation: spin 1s linear infinite;
   margin: 0 auto 25px;
 }
-
-
 
 .connection-info {
   margin-top: 15px;
@@ -294,8 +285,6 @@ const onMessageSent = (message) => {
   transform: translateY(-2px);
 }
 
-
-
 .chat-section {
   width: 100%;
   max-width: 1200px;
@@ -339,8 +328,6 @@ const onMessageSent = (message) => {
   text-align: center;
 }
 
-
-
 .header-title {
   margin: 0 0 10px 0;
   font-size: 2.5em;
@@ -380,8 +367,6 @@ const onMessageSent = (message) => {
   font-weight: 500;
 }
 
-
-
 .debug-info {
   margin-top: 10px;
   padding: 8px 12px;
@@ -408,8 +393,6 @@ const onMessageSent = (message) => {
   border-top: none;
   opacity: 0.8;
 }
-
-
 
 @keyframes spin {
   0% { transform: rotate(0deg); }

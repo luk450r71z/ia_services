@@ -22,7 +22,7 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
     Inicializar un cuestionario con configuración de sesión.
     
     Controles:
-    - Verificar tiempo de expiración (5 minutos)  
+    - Verificar tiempo de expiración (5 minutes)  
     - Verificar status de sesión (debe estar en 'new')
     - Actualizar sesión con configuración proporcionada
     - Obtener content y configs de la BD
@@ -87,12 +87,12 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
                 new_configs=request.configs,
                 session_type=service_type
             )
-            logger.info(f"Sesión {id_session} actualizada con nueva configuración")
+            logger.info(f"Session {id_session} updated with new configuration")
         
         # Usar servicio para inicializar la sesión en la base de datos
         session_data = SessionService.initiate_session(id_session)
         
-        logger.info(f"Servicio '{service_type}' iniciado exitosamente para sesión: {id_session}")
+        logger.info(f"Service '{service_type}' started successfully for session: {id_session}")
         
         # Crear respuesta con URLs
         urls = ServiceUrls(
@@ -123,10 +123,10 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
                 detail=str(e)
             )
     except Exception as e:
-        logger.error(f"Error inesperado al iniciar servicio: {str(e)}")
+        logger.error(f"Unexpected error starting service: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno del servidor: {str(e)}"
+            detail=f"Internal server error: {str(e)}"
         )
 
 
@@ -144,22 +144,22 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
     3. Conectar WebSocket e inicializar agente
     4. Manejar comunicación bidireccional
     """
-    logger.info(f"🔗 Nueva conexión WebSocket para sesión: {id_session}")
+    logger.info(f"🔗 New WebSocket connection for session: {id_session}")
     
     try:
         # Validación usando servicio
         session_data = SessionService.validate_session_for_start(id_session)
         
         if not session_data:
-            logger.warning(f"❌ Sesión inválida o expirada: {id_session}")
-            await websocket.close(code=4004, reason="Sesión inválida o expirada")
+            logger.warning(f"❌ Invalid or expired session: {id_session}")
+            await websocket.close(code=4004, reason="Invalid or expired session")
             return
         
         # Verificar que tenga contenido válido para cuestionario
         content = session_data.get('content')
         if not content or not isinstance(content, dict) or not content.get('questions'):
-            logger.warning(f"❌ Contenido inválido en sesión: {id_session}")
-            await websocket.close(code=4001, reason="Contenido de cuestionario inválido")
+            logger.warning(f"❌ Invalid content in session: {id_session}")
+            await websocket.close(code=4001, reason="Invalid session content")
             return
         
         # Marcar sesión como iniciada usando servicio
@@ -167,17 +167,17 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
         
         # Conectar WebSocket e inicializar agente
         await websocket_manager.connect_and_initialize(websocket, id_session, session_data)
-        logger.info(f"✅ WebSocket conectado e inicializado para sesión: {id_session}")
+        logger.info(f"✅ WebSocket connected and initialized for session: {id_session}")
         
         # Manejar comunicación completa
         await websocket_manager.handle_connection_lifecycle(websocket, id_session)
                     
     except WebSocketDisconnect:
-        logger.info(f"🔌 Cliente desconectado de sesión: {id_session}")
+        logger.info(f"🔌 Client disconnected from session: {id_session}")
     except Exception as e:
-        logger.error(f"❌ Error fatal en WebSocket {id_session}: {str(e)}")
+        logger.error(f"❌ Fatal error in WebSocket {id_session}: {str(e)}")
         try:
-            await websocket.close(code=1011, reason="Error interno del servidor")
+            await websocket.close(code=1011, reason="Internal server error")
         except:
             pass
     finally:

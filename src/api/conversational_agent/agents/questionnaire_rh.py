@@ -159,7 +159,7 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         # Verificar que hay preguntas configuradas
         if not self.questions:
             logger.error("❌ No hay preguntas configuradas en el agente")
-            return "Error: No se han configurado preguntas para esta entrevista. Por favor, contacta al administrador."
+            return "Error: No questions have been configured for this interview. Please contact the administrator."
         
         # Configurar estado inicial
         self.state.pending_questions = self.questions
@@ -167,11 +167,11 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         self.state.current_question = self.questions[0]
         
         # Obtener mensaje de bienvenida del content y reemplazar variables
-        welcome_content = self.content.get('welcome_message', """Soy el asistente de RRHH de Adaptiera. 
-Voy a realizarte algunas preguntas para conocerte mejor.
-Responde con la mayor sinceridad posible.
+        welcome_content = self.content.get('welcome_message', """I am Adaptiera's HR Assistant. 
+I will ask you some questions to get to know you better.
+Please answer as honestly as possible.
 
-Empecemos:""")
+Let's begin:""")
         
         # Reemplazar {client_name} con el nombre real del cliente
         client_name = self.content.get('client_name', '')
@@ -203,7 +203,7 @@ Empecemos:""")
         
         # Verificar si la conversación ya está completa
         if self.state.conversation_complete:
-            return "La entrevista ya ha finalizado. ¡Gracias por tu participación!"
+            return "The interview has already ended. Thank you for your participation!"
         
         # Agregar mensaje del usuario al estado
         user_message = HumanMessage(content=user_input)
@@ -235,10 +235,10 @@ Empecemos:""")
             self.state.needs_clarification = True
             self.state.clarification_reason = clarification_reason
             
-            clarification_message = AIMessage(content=f"""Me gustaría que puedas ampliar tu respuesta anterior.
+            clarification_message = AIMessage(content=f"""I would like you to expand on your previous response.
 {clarification_reason}
 
-Por favor, proporciona más detalles sobre: {self.state.current_question}""")
+Please provide more details about: {self.state.current_question}""")
             
             self.state.messages.append(clarification_message)
             return clarification_message.content
@@ -266,76 +266,76 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
         return self._evaluate_open_question(user_response, current_question)
     
     def _validate_multiple_choice(self, user_response: str, options: List[str]) -> tuple[bool, str]:
-        """Valida respuesta de opción múltiple usando LLM"""
-        # Configurar LLM
+        """Validates multiple choice response using LLM"""
+        # Configure LLM
         load_env_variables()
         groq_api_key = os.getenv("GROQ_API_KEY")
         
         if not groq_api_key:
-            raise ValueError("GROQ_API_KEY es requerida para validar opciones múltiples")
+            raise ValueError("GROQ_API_KEY is required to validate multiple choice responses")
         
         llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
         
         options_text = ", ".join(options)
         
         prompt = f"""
-        Determina si la respuesta del usuario corresponde a alguna de las opciones válidas.
+        Determine if the user's response corresponds to any of the valid options.
         
-        Opciones válidas: {options_text}
-        Respuesta del usuario: {user_response}
+        Valid options: {options_text}
+        User response: {user_response}
         
-        Responde SOLO con:
-        - "VALIDA" si la respuesta coincide con alguna opción (acepta variaciones, sinónimos, etc.)
-        - "INVALIDA" si no corresponde a ninguna opción
+        Respond ONLY with:
+        - "VALID" if the response matches any option (accepts variations, synonyms, etc.)
+        - "INVALID" if it doesn't correspond to any option
         
-        Sé FLEXIBLE - acepta respuestas que claramente se refieren a una opción aunque no sean exactas.
+        Be FLEXIBLE - accept responses that clearly refer to an option even if they're not exact.
         """
         
         response = llm.invoke(prompt)
         content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
         
-        if content.startswith("VALIDA"):
+        if content.startswith("VALID"):
             return True, ""
         else:
             options_list = "\n".join([f"  • {opt}" for opt in options])
-            return False, f"Debes elegir una de las siguientes opciones:\n{options_list}"
+            return False, f"Please choose one of the following options:\n{options_list}"
     
     def _evaluate_open_question(self, user_response: str, current_question: str) -> tuple[bool, str]:
-        """Evalúa pregunta abierta con LLM"""
+        """Evaluates open-ended question with LLM"""
         load_env_variables()
         groq_api_key = os.getenv("GROQ_API_KEY")
         
         if not groq_api_key:
-            # Fallback simple para preguntas abiertas
+            # Simple fallback for open questions
             is_satisfactory = len(user_response.strip()) > 3
-            clarification_reason = "Por favor, proporciona una respuesta más detallada." if not is_satisfactory else ""
+            clarification_reason = "Please provide a more detailed response." if not is_satisfactory else ""
             return is_satisfactory, clarification_reason
         
         llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
         
         prompt = f"""
-        Evalúa si la siguiente respuesta es satisfactoria para la pregunta planteada:
+        Evaluate if the following response is satisfactory for the given question:
         
-        Pregunta: {current_question}
-        Respuesta: {user_response}
+        Question: {current_question}
+        Response: {user_response}
         
-        Responde SOLO con:
-        - "SATISFACTORIA" si la respuesta proporciona información básica relevante
-        - "NECESITA_CLARIFICACION: [razón específica]" si está vacía, es irrelevante o muy confusa
+        Respond ONLY with:
+        - "SATISFACTORY" if the response provides basic relevant information
+        - "NEEDS_CLARIFICATION: [specific reason]" if it's empty, irrelevant, or very confusing
         
-        Sé PERMISIVO en tu evaluación. Acepta respuestas que tengan al menos alguna relación con la pregunta, 
-            incluso si son breves o no muy detalladas. Solo solicita clarificación si la respuesta realmente 
-            no tiene sentido o está completamente fuera de tema.
+        Be LENIENT in your evaluation. Accept responses that have at least some relation to the question, 
+            even if they are brief or not very detailed. Only request clarification if the response really 
+            doesn't make sense or is completely off-topic.
         """
         
         try:
             response = llm.invoke(prompt)
             content = response.content.strip() if hasattr(response, 'content') else str(response).strip()
             
-            if content.startswith("SATISFACTORIA"):
+            if content.startswith("SATISFACTORY"):
                 return True, ""
-            elif content.startswith("NECESITA_CLARIFICACION"):
-                reason = content.replace("NECESITA_CLARIFICACION:", "").strip()
+            elif content.startswith("NEEDS_CLARIFICATION"):
+                reason = content.replace("NEEDS_CLARIFICATION:", "").strip()
                 return False, reason
             else:
                 # Formato inesperado, ser permisivo
@@ -343,7 +343,7 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
         except Exception as e:
             # Fallback simple
             is_satisfactory = len(user_response.strip()) > 3
-            clarification_reason = "Por favor, proporciona una respuesta más detallada." if not is_satisfactory else ""
+            clarification_reason = "Please provide a more detailed response." if not is_satisfactory else ""
             return is_satisfactory, clarification_reason
     
     def _next_question(self) -> str:
@@ -362,9 +362,9 @@ Por favor, proporciona más detalles sobre: {self.state.current_question}""")
             # Formatear siguiente pregunta con opciones (si las tiene)
             formatted_question = self._format_question_with_options(self.state.current_question_index)
             
-            next_question_message = AIMessage(content=f"""Perfecto, gracias por tu respuesta.
+            next_question_message = AIMessage(content=f"""Perfect, thank you for your response.
 
-Siguiente pregunta:
+Next question:
 {formatted_question}""")
             
             self.state.messages.append(next_question_message)
@@ -386,13 +386,13 @@ Siguiente pregunta:
         # Las notificaciones ahora se manejan automáticamente por el websocket_manager
         # cuando la conversación se marca como completa - no necesitamos envío manual aquí
         
-        final_message = AIMessage(content="""¡Muchas gracias por tu tiempo! 
+        final_message = AIMessage(content="""Thank you very much for your time! 
 
-✅ Tus respuestas han sido guardadas correctamente.
+✅ Your responses have been successfully saved.
 
-✅ Nuestro equipo de RRHH revisará tu información y se pondrá en contacto contigo pronto.
+✅ Our HR team will review your information and contact you soon.
 
-¡Que tengas un excelente día!""")
+Have a great day!""")
         
         self.state.messages.append(final_message)
         return final_message.content
