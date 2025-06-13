@@ -30,7 +30,7 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
     id_session = request.id_session
     service_type = "questionnaire"  # Tipo implícito en el endpoint
     
-    # Validación simple: content debe contener questions
+    # Validación simple: content 
     if request.content:
         required_content_fields = ['questions', 'client_name', 'welcome_message']
         missing_fields = [field for field in required_content_fields if field not in request.content]
@@ -39,6 +39,35 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"El content debe contener los campos: {', '.join(missing_fields)}"
             )
+        
+        # Validación de la estructura de questions
+        questions = request.content.get('questions', [])
+        valid_answer_types = ['short_text', 'long_text', 'multiple_choice', 'single_choice']
+        
+        for i, question in enumerate(questions):
+            # Validar campos requeridos
+            required_question_fields = ['id', 'question', 'answerType']
+            missing_question_fields = [field for field in required_question_fields if field not in question]
+            if missing_question_fields:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"La pregunta {i+1} debe contener los campos: {', '.join(missing_question_fields)}"
+                )
+            
+            # Validar tipo de respuesta
+            if question['answerType'] not in valid_answer_types:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"La pregunta {i+1} tiene un tipo de respuesta inválido. Debe ser uno de: {', '.join(valid_answer_types)}"
+                )
+            
+            # Validar opciones para preguntas de opción múltiple o única
+            if question['answerType'] in ['multiple_choice', 'single_choice']:
+                if 'options' not in question or not isinstance(question['options'], list) or len(question['options']) < 2:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"La pregunta {i+1} de tipo {question['answerType']} debe tener al menos 2 opciones"
+                    )
     # Validación de campos requeridos en configs
     if request.configs:
         required_fields = ['webhook_url', 'email', 'avatar']

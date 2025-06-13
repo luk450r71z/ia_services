@@ -29,7 +29,7 @@ npm run build
 ## Estructura del Proyecto
 
 ```
-src/test/
+src/test_client/
 ├── index.html          # Punto de entrada HTML
 ├── src/
 │   ├── main.js        # Punto de entrada JavaScript

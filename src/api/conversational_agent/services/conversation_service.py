@@ -45,7 +45,7 @@ class ConversationManager:
             agent = self._create_agent(session_data)
             if not agent:
                 return None
-            
+             
             # Guardar agente y obtener mensaje de bienvenida
             self.active_agents[id_session] = agent
             welcome_message = agent.start_conversation()

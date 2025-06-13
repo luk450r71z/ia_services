@@ -92,7 +92,7 @@ El servidor estará disponible en: `http://localhost:8000`
 
 #### Instalar Dependencias de Node.js
 ```bash
-cd src/test
+cd src/test_client
 npm install
 # o si prefieres yarn
 yarn install
@@ -100,7 +100,7 @@ yarn install
 
 #### Ejecutar el Servidor de Desarrollo
 ```bash
-cd src/test
+cd src/test_client
 npm run dev
 # o si prefieres yarn
 yarn dev
@@ -110,7 +110,7 @@ El frontend estará disponible en: `http://localhost:3000`
 
 #### Construir para Producción
 ```bash
-cd src/test
+cd src/test_client
 npm run build
 # o si prefieres yarn
 yarn build
@@ -172,7 +172,7 @@ ws.send(JSON.stringify({
 
 ### 3. Interfaz Web
 1. Ejecuta `python src/api/main.py` para el backend
-2. Ejecuta `npm run dev` en `src/test/` para el frontend
+2. Ejecuta `npm run dev` en `src/test_client/` para el frontend
 3. Abre `http://localhost:5173` en tu navegador (puerto por defecto de Vite)
 4. Usa el widget de chat para interactuar con el agente
 
@@ -201,7 +201,7 @@ cd src/api
 python main.py
 
 # Terminal 2: Frontend
-cd src/test
+cd src/test_client
 npm run dev
 ```
 
