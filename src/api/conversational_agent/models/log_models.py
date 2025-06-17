@@ -19,15 +19,4 @@ class MessageLog(BaseModel):
     attempt_number: int = 1
     metadata: Optional[Dict[str, Any]] = None
     webhook_sent: bool = False
-    webhook_response: Optional[Dict[str, Any]] = None
-
-class WebhookEvent(BaseModel):
-    """Modelo para eventos enviados al webhook"""
-    event_type: str = "message_log"
-    id_session: str
-    message_type: str
-    content: str
-    timestamp: datetime
-    status: LogStatus
-    attempt_number: int
-    metadata: Optional[Dict[str, Any]] = None 
+    webhook_response: Optional[Dict[str, Any]] = None 

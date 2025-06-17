@@ -166,6 +166,8 @@
         
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
+          const isWelcome = data.data?.is_welcome;
+          
           this.addMessage('agent', data.content);
           
           if (isComplete) {
@@ -176,8 +178,6 @@
         } else if (data.type === 'ui_config') {
           console.log('🔧 ChatWidget received ui_config:', data);
           this.$emit('ui-config', data);
-        } else if (data.type === 'system') {
-          this.addMessage('system', data.content);
         } else if (data.type === 'error') {
           console.error('❌ Server error:', data.content);
           this.addMessage('system', `Error: ${data.content}`);

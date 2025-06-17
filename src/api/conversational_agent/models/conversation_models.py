@@ -21,17 +21,15 @@ class ConversationState(BaseModel):
     # Index of the current question
     current_question_index: int = 0
     
-    # Flag to indicate if clarification is needed
-    needs_clarification: bool = False
-    
-    # Reason why clarification is needed
-    clarification_reason: Optional[str] = None
-    
     # Flag to indicate if the conversation has ended
     conversation_complete: bool = False
     
-    # Additional data that may be useful
+    # Extra data for agent-specific information
     extra_data: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Clarification flags
+    needs_clarification: bool = False
+    clarification_reason: Optional[str] = None
     
     class Config:
         arbitrary_types_allowed = True 

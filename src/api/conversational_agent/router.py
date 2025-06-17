@@ -5,9 +5,7 @@ import logging
 from .models.schemas import (
     InitiateServiceRequest, 
     InitiateServiceResponse, 
-    ServiceUrls,
-    QuestionnaireContent,
-    AnswerType
+    ServiceUrls
 )
 # Importar servicios
 from .services.websocket_manager import websocket_manager
@@ -18,24 +16,6 @@ from .services.session_service import SessionService
 logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
-
-def validate_questionnaire_content(content: QuestionnaireContent) -> None:
-    """
-    Valida el contenido del cuestionario.
-    
-    Args:
-        content: Contenido del cuestionario a validar
-        
-    Raises:
-        ValueError: Si hay errores de validación
-    """
-    if not content.questions:
-        raise ValueError("El cuestionario debe tener al menos una pregunta")
-        
-    for question in content.questions:
-        if question.answerType in [AnswerType.MULTIPLE_CHOICE, AnswerType.SINGLE_CHOICE]:
-            if not question.options or len(question.options) < 2:
-                raise ValueError(f"Las preguntas de tipo {question.answerType} deben tener al menos 2 opciones")
 
 @chat_router.post("/questionnaire/initiate", response_model=InitiateServiceResponse)
 async def initiate_questionnaire(request: InitiateServiceRequest):
@@ -113,8 +93,8 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
     
     Flujo simplificado:
     1. Validar sesión (debe estar 'initiated')
-    2. Actualizar status a 'started'  
-    3. Conectar WebSocket e inicializar agente
+    2. Conectar WebSocket e inicializar agente
+    3. Si todo está bien, actualizar status a 'started'
     4. Manejar comunicación bidireccional
     """
     try:
@@ -133,14 +113,19 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
             await websocket.close(code=4001, reason="Invalid session content")
             return
         
-        # Marcar sesión como iniciada usando servicio
-        SessionService.mark_session_as_started(id_session, session_data)
-        
-        # Conectar WebSocket e inicializar agente
-        await websocket_manager.connect_and_initialize(websocket, id_session, session_data)
-        
-        # Manejar comunicación completa
-        await websocket_manager.handle_connection_lifecycle(websocket, id_session)
+        try:
+            # Conectar WebSocket e inicializar agente
+            await websocket_manager.connect_and_initialize(websocket, id_session, session_data)
+            
+            # Si llegamos aquí, la inicialización fue exitosa
+            SessionService.mark_session_as_started(id_session, session_data)
+            
+            # Manejar comunicación completa
+            await websocket_manager.handle_connection_lifecycle(websocket, id_session)
+        except Exception as e:
+            logger.error(f"❌ Error en inicialización de WebSocket: {str(e)}")
+            await websocket.close(code=1011, reason="Internal server error")
+            return
                     
     except WebSocketDisconnect:
         pass
