@@ -2,10 +2,15 @@ from fastapi import APIRouter, HTTPException, status, WebSocket, WebSocketDiscon
 import logging
 
 # Importar modelos
-from .models.schemas import InitiateServiceRequest, InitiateServiceResponse, ServiceUrls
-# Importar WebSocket manager
-from .websocket_manager import websocket_manager
+from .models.schemas import (
+    InitiateServiceRequest, 
+    InitiateServiceResponse, 
+    ServiceUrls,
+    QuestionnaireContent,
+    AnswerType
+)
 # Importar servicios
+from .services.websocket_manager import websocket_manager
 from .services.session_service import SessionService
 
 
@@ -14,7 +19,23 @@ logger = logging.getLogger(__name__)
 
 chat_router = APIRouter()
 
-
+def validate_questionnaire_content(content: QuestionnaireContent) -> None:
+    """
+    Valida el contenido del cuestionario.
+    
+    Args:
+        content: Contenido del cuestionario a validar
+        
+    Raises:
+        ValueError: Si hay errores de validación
+    """
+    if not content.questions:
+        raise ValueError("El cuestionario debe tener al menos una pregunta")
+        
+    for question in content.questions:
+        if question.answerType in [AnswerType.MULTIPLE_CHOICE, AnswerType.SINGLE_CHOICE]:
+            if not question.options or len(question.options) < 2:
+                raise ValueError(f"Las preguntas de tipo {question.answerType} deben tener al menos 2 opciones")
 
 @chat_router.post("/questionnaire/initiate", response_model=InitiateServiceResponse)
 async def initiate_questionnaire(request: InitiateServiceRequest):
@@ -23,68 +44,20 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
     
     Controles:
     - Verificar tiempo de expiración (5 minutes)  
-    - Verificar status de sesión (debe estar en 'new')
+    - Verificar status de sesión
     - Actualizar sesión con configuración proporcionada
     - Obtener content y configs de la BD
     """
     id_session = request.id_session
     service_type = "questionnaire"  # Tipo implícito en el endpoint
     
-    # Validación simple: content 
-    if request.content:
-        required_content_fields = ['questions', 'client_name', 'welcome_message']
-        missing_fields = [field for field in required_content_fields if field not in request.content]
-        if missing_fields:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"El content debe contener los campos: {', '.join(missing_fields)}"
-            )
-        
-        # Validación de la estructura de questions
-        questions = request.content.get('questions', [])
-        valid_answer_types = ['short_text', 'long_text', 'multiple_choice', 'single_choice']
-        
-        for i, question in enumerate(questions):
-            # Validar campos requeridos
-            required_question_fields = ['id', 'question', 'answerType']
-            missing_question_fields = [field for field in required_question_fields if field not in question]
-            if missing_question_fields:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"La pregunta {i+1} debe contener los campos: {', '.join(missing_question_fields)}"
-                )
-            
-            # Validar tipo de respuesta
-            if question['answerType'] not in valid_answer_types:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"La pregunta {i+1} tiene un tipo de respuesta inválido. Debe ser uno de: {', '.join(valid_answer_types)}"
-                )
-            
-            # Validar opciones para preguntas de opción múltiple o única
-            if question['answerType'] in ['multiple_choice', 'single_choice']:
-                if 'options' not in question or not isinstance(question['options'], list) or len(question['options']) < 2:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"La pregunta {i+1} de tipo {question['answerType']} debe tener al menos 2 opciones"
-                    )
-    # Validación de campos requeridos en configs
-    if request.configs:
-        required_fields = ['webhook_url', 'email', 'avatar']
-        missing_fields = [field for field in required_fields if field not in request.configs] 
-        if missing_fields:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"El campo configs debe contener los campos: {', '.join(missing_fields)}"
-            )
-    
     try:
         # Actualizar la sesión con la configuración proporcionada
         if request.content or request.configs:
             SessionService.update_session_content_and_configs(
                 id_session=id_session,
-                new_content=request.content,
-                new_configs=request.configs,
+                new_content=request.content.model_dump() if request.content else None,
+                new_configs=request.configs.model_dump() if request.configs else None,
                 session_type=service_type
             )
             logger.info(f"Session {id_session} updated with new configuration")
@@ -144,8 +117,6 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
     3. Conectar WebSocket e inicializar agente
     4. Manejar comunicación bidireccional
     """
-    logger.info(f"🔗 New WebSocket connection for session: {id_session}")
-    
     try:
         # Validación usando servicio
         session_data = SessionService.validate_session_for_start(id_session)
@@ -167,13 +138,12 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
         
         # Conectar WebSocket e inicializar agente
         await websocket_manager.connect_and_initialize(websocket, id_session, session_data)
-        logger.info(f"✅ WebSocket connected and initialized for session: {id_session}")
         
         # Manejar comunicación completa
         await websocket_manager.handle_connection_lifecycle(websocket, id_session)
                     
     except WebSocketDisconnect:
-        logger.info(f"🔌 Client disconnected from session: {id_session}")
+        pass
     except Exception as e:
         logger.error(f"❌ Fatal error in WebSocket {id_session}: {str(e)}")
         try:

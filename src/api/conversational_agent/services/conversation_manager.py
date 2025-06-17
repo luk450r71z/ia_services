@@ -1,28 +1,13 @@
 import logging
-from typing import Dict, Any, Protocol, Optional
+from typing import Dict, Any, Optional
 
 from .session_service import SessionService
-from ..notifications import notification_manager
+from .log_service import log_service
+from .notification_service import notification_service
+from ..models.log_models import LogStatus
+from ..models.agent_protocol import ConversationalAgent
 
 logger = logging.getLogger(__name__)
-
-class ConversationalAgent(Protocol):
-    """Protocol that defines the interface for conversational agents"""
-    def start_conversation(self, session_data: Dict = None) -> str:
-        """Starts the conversation and returns the welcome message"""
-        ...
-    
-    def process_user_input(self, user_input: str) -> str:
-        """Processes user input and returns the agent's response"""
-        ...
-    
-    def is_conversation_complete(self) -> bool:
-        """Checks if the conversation has ended"""
-        ...
-    
-    def get_conversation_summary(self) -> Dict[str, Any]:
-        """Gets a summary of the conversation"""
-        ...
 
 class ConversationManager:
     """Manages all conversational logic: agents, sessions and message processing"""
@@ -50,7 +35,19 @@ class ConversationManager:
             self.active_agents[id_session] = agent
             welcome_message = agent.start_conversation()
             
-            logger.info(f"🤖 Conversation initialized for session: {id_session}")
+            # Log welcome message
+            try:
+                await log_service.log_message(
+                    id_session=id_session,
+                    message_type="agent",
+                    content=welcome_message,
+                    status=LogStatus.ANSWERED,
+                    metadata={"is_welcome": True}
+                )
+            except Exception as e:
+                logger.error(f"Error logging welcome message: {str(e)}")
+                # No propagamos el error para no interrumpir la inicialización
+            
             return welcome_message
             
         except Exception as e:
@@ -60,7 +57,13 @@ class ConversationManager:
     async def process_user_message(self, id_session: str, message: str) -> Dict[str, Any]:
         """Processes a user message and handles all conversational logic"""
         try:
-            logger.info(f"💬 Processing user message in session {id_session}: {message[:50]}...")
+            # Log user message
+            await log_service.log_message(
+                id_session=id_session,
+                message_type="user",
+                content=message,
+                status=LogStatus.ANSWERED
+            )
             
             # Get agent
             agent = self.active_agents.get(id_session)
@@ -70,6 +73,15 @@ class ConversationManager:
             # Process message with agent
             agent_response = agent.process_user_input(message)
             is_complete = agent.is_conversation_complete()
+            
+            # Log agent response
+            await log_service.log_message(
+                id_session=id_session,
+                message_type="agent",
+                content=agent_response,
+                status=LogStatus.ANSWERED,
+                metadata={"is_complete": is_complete}
+            )
             
             # If complete, finalize session
             summary = None
@@ -85,6 +97,14 @@ class ConversationManager:
             
         except Exception as e:
             logger.error(f"❌ Error processing user message in session {id_session}: {str(e)}")
+            # Log error
+            await log_service.log_message(
+                id_session=id_session,
+                message_type="system",
+                content=f"Error: {str(e)}",
+                status=LogStatus.SKIPPED,
+                metadata={"error": str(e)}
+            )
             raise
     
     def _create_agent(self, session_data: Dict) -> Optional[ConversationalAgent]:
@@ -123,24 +143,29 @@ class ConversationManager:
             updated_session = SessionService.complete_session_with_summary(id_session, conversation_summary)
             
             if updated_session:
-                logger.info(f"✅ Session finalized: {id_session}")
-                
-                # Send notifications
-                try:
-                    notification_results = await notification_manager.send_completion_notifications(
-                        id_session=id_session,
-                        session_data=updated_session,
-                        conversation_summary=conversation_summary
-                    )
-                    
-                    if notification_results.get("emails_sent") or notification_results.get("webhook_sent"):
-                        logger.info(f"📬 Notifications sent for session {id_session}")
-                    
-                    if notification_results.get("errors"):
-                        logger.warning(f"⚠️ Notification errors: {notification_results['errors']}")
+                # Verificar configuración de notificaciones
+                configs = updated_session.get('configs', {})
+                emails = configs.get('emails', [])
+                if emails:
+                    logger.info(f"📧 Found {len(emails)} email recipients in config")
+                    # Send notifications
+                    try:
+                        notification_results = await notification_service.send_completion_notifications(
+                            id_session=id_session,
+                            emails=emails,
+                            conversation_summary=conversation_summary
+                        )
                         
-                except Exception as notification_error:
-                    logger.error(f"❌ Error sending notifications: {str(notification_error)}")
+                        if notification_results.get("emails_sent"):
+                            logger.info(f"📬 Notifications sent for session {id_session}")
+                        
+                        if notification_results.get("errors"):
+                            logger.warning(f"⚠️ Notification errors: {notification_results['errors']}")
+                            
+                    except Exception as notification_error:
+                        logger.error(f"❌ Error sending notifications: {str(notification_error)}")
+                else:
+                    logger.info(f"📭 No email recipients configured in config")
                 
                 return conversation_summary
             else:

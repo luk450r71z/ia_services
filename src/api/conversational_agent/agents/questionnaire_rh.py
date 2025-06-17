@@ -82,7 +82,7 @@ class QuestionnaireRHAgent:
         if not groq_api_key:
             raise ValueError("GROQ_API_KEY es requerida para extraer preguntas inteligentemente")
         
-        llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
+        llm = ChatGroq(api_key=groq_api_key, model="llama3-8b-8192")
         
         prompt = f"""JSON_INPUT:
 {json_str}
@@ -138,7 +138,7 @@ RETURN ONLY JSON ARRAY - NO OTHER TEXT"""
         if options and isinstance(options, list):
             # Es pregunta de opción múltiple
             options_text = "\n".join([f"  • {option}" for option in options])
-            return f"{question_text}\n\nOpciones:\n{options_text}\n\nPor favor, elige una de las opciones anteriores."
+            return f"{question_text}\n\nOpciones:\n{options_text}\n\n"
         else:
             # Es pregunta abierta
             return question_text
@@ -274,7 +274,7 @@ Please provide more details about: {self.state.current_question}""")
         if not groq_api_key:
             raise ValueError("GROQ_API_KEY is required to validate multiple choice responses")
         
-        llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
+        llm = ChatGroq(api_key=groq_api_key, model="llama3-8b-8192")
         
         options_text = ", ".join(options)
         
@@ -311,7 +311,7 @@ Please provide more details about: {self.state.current_question}""")
             clarification_reason = "Please provide a more detailed response." if not is_satisfactory else ""
             return is_satisfactory, clarification_reason
         
-        llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile")
+        llm = ChatGroq(api_key=groq_api_key, model="llama3-8b-8192")
         
         prompt = f"""
         Evaluate if the following response is satisfactory for the given question:

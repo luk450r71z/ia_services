@@ -18,12 +18,12 @@ class SessionService:
         try:
             created_at = session['created_at']
             if isinstance(created_at, str):
-                created_at = datetime.fromisoformat(created_at)
+                created_at = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
             elif not isinstance(created_at, datetime):
                 logger.error(f"Invalid date format in session: {created_at}")
                 return False
             
-            return datetime.utcnow() - created_at <= timedelta(minutes=5)
+            return datetime.strptime(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "%Y-%m-%d %H:%M:%S") - created_at <= timedelta(minutes=5)
         except (KeyError, ValueError) as e:
             logger.error(f"Error validating session expiration: {str(e)}")
             return False

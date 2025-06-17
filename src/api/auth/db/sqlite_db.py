@@ -73,11 +73,10 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             status TEXT CHECK(status IN ('new', 'initiated', 'started', 'complete', 'expired')),
             content JSON DEFAULT '{}',
-            configs JSON DEFAULT '{}'          
+            configs JSON DEFAULT '{}',
+            logs JSON DEFAULT '[]'          
         )
         """)
-
-
 
         conn.commit()
         conn.close()
@@ -95,7 +94,7 @@ def create_session_db(type_value=None, content=None, configs=None):
         cursor = conn.cursor()
 
         id_session = str(uuid4())
-        created_at = datetime.utcnow().isoformat()
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # Convertir content y configs a JSON si se proporcionan
         content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
@@ -122,8 +121,8 @@ def create_session_db(type_value=None, content=None, configs=None):
         
         if session:
             # Convertir los timestamps a datetime para consistencia
-            session['created_at'] = datetime.fromisoformat(session['created_at'])
-            session['updated_at'] = datetime.fromisoformat(session['updated_at'])
+            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S")
+            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S")
             # Convertir content y configs de JSON string a dict
             try:
                 if session['content'] and session['content'] != '{}':
@@ -175,8 +174,8 @@ def get_session_db(id_session: str):
 
         if session:
             # Convertir timestamps a datetime
-            session['created_at'] = datetime.fromisoformat(session['created_at'])
-            session['updated_at'] = datetime.fromisoformat(session['updated_at'])
+            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S")
+            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S")
             # Convertir content y configs de JSON string a dict
             try:
                 if session['content'] and session['content'] != '{}':
@@ -219,7 +218,7 @@ def update_session_db(id_session: str, type_value: str, status: str, content: di
         conn = get_db()
         cursor = conn.cursor()
 
-        updated_at = datetime.utcnow().isoformat()
+        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
         configs_json = json.dumps(configs, ensure_ascii=False) if configs else '{}'
         
@@ -241,8 +240,8 @@ def update_session_db(id_session: str, type_value: str, status: str, content: di
         
         if session:
             # Convertir timestamps a datetime
-            session['created_at'] = datetime.fromisoformat(session['created_at'])
-            session['updated_at'] = datetime.fromisoformat(session['updated_at'])
+            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S")
+            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S")
             # Convertir content y configs de JSON string a dict
             try:
                 session['content'] = json.loads(session['content']) if session['content'] else None
@@ -273,7 +272,123 @@ def update_session_db(id_session: str, type_value: str, status: str, content: di
         if conn:
             conn.close()
 
+def save_message_log(log_data: dict):
+    """Guarda un log de mensaje en la base de datos"""
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
 
+        # Convertir metadata y webhook_response a JSON
+        metadata_json = json.dumps(log_data.get('metadata', {}), ensure_ascii=False)
+        webhook_response_json = json.dumps(log_data.get('webhook_response', {}), ensure_ascii=False)
+
+        cursor.execute("""
+        INSERT INTO message_logs (
+            id_session, message_type, content, timestamp, status,
+            attempt_number, metadata, webhook_sent, webhook_response
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            log_data['id_session'],
+            log_data['message_type'],
+            log_data['content'],
+            log_data['timestamp'],
+            log_data['status'],
+            log_data['attempt_number'],
+            metadata_json,
+            log_data['webhook_sent'],
+            webhook_response_json
+        ))
+
+        conn.commit()
+        return cursor.lastrowid
+    except Exception as e:
+        logger.error(f"Error guardando log de mensaje: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+def update_session_logs(id_session: str, log_data: dict):
+    """Actualiza los logs de una sesión"""
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Obtener logs actuales
+        cursor.execute("SELECT logs FROM sessions WHERE id_session = ?", (id_session,))
+        result = cursor.fetchone()
+        
+        if not result:
+            raise ValueError(f"Sesión no encontrada: {id_session}")
+        
+        # Convertir logs actuales a lista
+        try:
+            current_logs = json.loads(result['logs'] or '[]')
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decodificando logs JSON para sesión {id_session}: {e}")
+            current_logs = []
+        
+        # Si el último log tiene el mismo contenido y tipo, actualizarlo
+        if current_logs and current_logs[-1].get('content') == log_data.get('content') and current_logs[-1].get('message_type') == log_data.get('message_type'):
+            current_logs[-1] = log_data
+        else:
+            # Si es un log diferente, agregarlo
+            current_logs.append(log_data)
+        
+        # Actualizar logs en la base de datos
+        cursor.execute("""
+        UPDATE sessions 
+        SET logs = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id_session = ?
+        """, (json.dumps(current_logs, ensure_ascii=False), id_session))
+        
+        conn.commit()
+        return len(current_logs)
+    except sqlite3.Error as e:
+        logger.error(f"Error de SQLite actualizando logs de sesión: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado actualizando logs de sesión: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+def get_session_logs(id_session: str) -> list:
+    """Obtiene todos los logs de una sesión"""
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT logs FROM sessions WHERE id_session = ?", (id_session,))
+        result = cursor.fetchone()
+        
+        if not result:
+            return []
+            
+        try:
+            return json.loads(result['logs'] or '[]')
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decodificando logs JSON para sesión {id_session}: {e}")
+            return []
+    except sqlite3.Error as e:
+        logger.error(f"Error de SQLite obteniendo logs de sesión: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Error inesperado obteniendo logs de sesión: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 # Initialize database when module is imported
 init_db() 

@@ -1,6 +1,5 @@
 import sqlite3
 import os
-from datetime import datetime
 
 # Asegurar que el directorio data existe
 os.makedirs('data', exist_ok=True)
@@ -18,7 +17,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status TEXT CHECK(status IN ('new', 'initiated', 'started', 'complete', 'expired')),
     content JSON DEFAULT '{}',
-    configs JSON DEFAULT '{}'
+    configs JSON DEFAULT '{}',
+    logs JSON DEFAULT '[]'
 )
 ''')
 
