@@ -1,0 +1,27 @@
+{
+  "name": "frontend-chat-ia",
+  "version": "1.0.0",
+  "description": "Frontend independiente de Chat IA - Servido desde webui_url del endpoint questionnaire/initiate",
+  "type": "module",
+  "main": "chat-ui.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite --host 0.0.0.0 --port 8080",
+    "build:production": "vite build --mode production",
+    "test": "vitest",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest watch"
+  },
+  "dependencies": {
+    "vue": "^3.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.4.0",
+    "vite": "^4.4.0"
+  },
+  "keywords": ["frontend", "chat", "ia", "vue", "websocket"],
+  "author": "Adaptiera Team"
+} 

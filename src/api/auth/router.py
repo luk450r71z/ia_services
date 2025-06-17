@@ -1,11 +1,9 @@
 import logging
+from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from secrets import compare_digest
 
-from auth.db.database import USERS
-from auth.db.sqlite_db import create_session_db, get_session_db
-from auth.models.schemas import SessionResponse
+from auth.services.auth_service import AuthService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,19 +15,24 @@ auth_router = APIRouter(tags=["Authentication"])
 # HTTP Basic Auth security
 security = HTTPBasic()
 
-@auth_router.post("/chat/session/auth", response_model=SessionResponse)
-async def create_session(credentials: HTTPBasicCredentials = Depends(security)):
+@auth_router.post("/session/auth")
+async def create_session(
+    credentials: HTTPBasicCredentials = Depends(security)
+) -> dict:
     """
     Create a new session using HTTP Basic Auth.
-    Validates username and password against the USERS database.
+    Only handles authentication - configuration is sent to the initialization endpoint.
+    
+    Returns:
+        dict: {"id_session": str}
     """
     username = credentials.username
     password = credentials.password
 
     logger.info(f"Authentication attempt for user: {username}")
 
-    # Validate credentials against the USERS dictionary
-    if username not in USERS or not compare_digest(USERS[username], password):
+    # Validate credentials using the service
+    if not AuthService.validate_credentials(username, password):
         logger.warning(f"Invalid authentication attempt for user: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -37,24 +40,19 @@ async def create_session(credentials: HTTPBasicCredentials = Depends(security)):
             headers={"WWW-Authenticate": "Basic"},
         )
     
-    logger.info(f"User {username} authenticated successfully")
+    logger.info(f"User {username} successfully authenticated")
     
-    # Create a new session in the database
+    # Create basic session using the service (only with credentials)
     try:
-        session = create_session_db()
-        if not session:
-            logger.error("Failed to create session - no session returned")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create session"
-            )
+        session = AuthService.create_user_session()
         
-        logger.info(f"Created new session for user {username}: {session['id_session']}")
-        return SessionResponse(**session)
+        return {"id_session": session['id_session']}
         
     except Exception as e:
         logger.error(f"Error creating session: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating session: {str(e)}"
-        ) 
+        )
+
+

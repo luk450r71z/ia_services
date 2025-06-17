@@ -24,8 +24,8 @@ app.add_middleware(
 )
 
 # Include auth router
-logger.info("Registering auth router at /api prefix")
-app.include_router(auth_router, prefix="/api", tags=["Authentication"])
+logger.info("Registering auth router at /api/chat prefix")
+app.include_router(auth_router, prefix="/api/chat", tags=["Authentication"])
 app.include_router(chat_router, prefix="/api/chat", tags=["Conversational Agent"])
 
 @app.get("/")
@@ -40,5 +40,5 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         reload=True,
-        reload_dirs=["auth"]
+        reload_dirs=["src/api"]
     )

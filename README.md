@@ -4,43 +4,47 @@
 
 ## 📋 Descripción
 
-IA Services es una plataforma completa que combina un backend robusto en FastAPI con un frontend interactivo en Vue.js para proporcionar servicios de inteligencia artificial, especialmente enfocado en chatbots conversacionales para entrevistas y otras aplicaciones.
+IA Services es una plataforma completa que combina un backend robusto en FastAPI con un frontend interactivo en Vue.js para proporcionar servicios de inteligencia artificial, especialmente enfocado en tests conversacionales para entrevistas y otras aplicaciones.
 
 ## 🏗️ Arquitectura del Proyecto
 
 ```
 ia_services/
-├── api/                          # Backend FastAPI
-│   ├── main.py                   # Punto de entrada principal de la API
-│   ├── auth/                     # Sistema de autenticación
-│   │   ├── router.py            # Endpoints de autenticación y servicios
-│   │   ├── config.py            # Configuración de autenticación
-│   │   ├── models/              # Modelos de datos
-│   │   ├── db/                  # Base de datos
-│   │   └── session/             # Manejo de sesiones JWT
-│   └── conversational_agent/    # Agente conversacional
-│       ├── router.py            # WebSocket y endpoints del chat
-│       └── models/              # Esquemas de datos del chat
-├── src/                         # Frontend Vue.js
-│   ├── main.js                 # Punto de entrada de Vue
-│   ├── App.vue                 # Componente principal
-│   └── chatbot/                # Componentes del chatbot
-│       ├── components/         # Componentes reutilizables
-│       └── pages/              # Páginas de la aplicación
-├── index.html                  # Página principal del frontend
-├── package.json                # Dependencias de Node.js
-├── vite.config.js              # Configuración de Vite
-├── requirements.txt            # Dependencias de Python
-└── assets/                     # Recursos estáticos
+├── src/
+│   ├── api/                      # Backend FastAPI
+│   │   ├── main.py              # Punto de entrada principal de la API
+│   │   ├── requirements.txt     # Dependencias de Python
+│   │   ├── auth/                # Sistema de autenticación
+│   │   │   ├── router.py        # Endpoints de autenticación
+│   │   │   ├── config.py        # Configuración de autenticación
+│   │   │   ├── models/          # Modelos de datos
+│   │   │   └── db/              # Base de datos SQLite
+│   │   └── conversational_agent/ # Agente conversacional
+│   │       ├── router.py        # WebSocket y endpoints del chat
+│   │       ├── websocket_manager.py # Gestor de conexiones WebSocket
+│   │       ├── agents/          # Agentes de IA
+│   │       ├── models/          # Esquemas de datos del chat
+│   │       └── utils/           # Utilidades
+│   └── test/                 # Frontend Vue.js
+│       ├── package.json         # Dependencias de Node.js
+│       ├── vite.config.js       # Configuración de Vite
+│       ├── index.html           # Página principal del frontend
+│       ├── src/
+│       │   ├── main.js          # Punto de entrada de Vue
+│       │   └── App.vue          # Componente principal
+│       ├── components/          # Componentes reutilizables
+│       └── pages/               # Páginas de la aplicación
+└── envs/
+    └── data/                    # Base de datos SQLite
 ```
 
 ## ✨ Características Principales
 
 ### 🔐 Sistema de Autenticación
-- **Autenticación JWT**: Tokens seguros para acceso a servicios
-- **Gestión de sesiones**: Control de sesiones activas por usuario
-- **Discovery de servicios**: Endpoint para descubrir servicios disponibles
-- **Múltiples servicios**: Soporte para diferentes tipos de IA
+- **Autenticación HTTP Basic**: Autenticación básica con usuario y contraseña
+- **Gestión de sesiones**: Control de sesiones activas por usuario en SQLite
+- **Servicios configurables**: Soporte para diferentes tipos de agentes conversacionales
+- **Estados de sesión**: Control de estados (new, initiated, started, complete, expired)
 
 ### 💬 Agente Conversacional
 - **WebSocket en tiempo real**: Comunicación bidireccional instantánea
@@ -72,12 +76,13 @@ cd ia_services
 
 #### Instalar Dependencias de Python
 ```bash
+cd src/api
 pip install -r requirements.txt
 ```
 
 #### Ejecutar el Servidor API
 ```bash
-cd api
+cd src/api
 python main.py
 ```
 
@@ -87,6 +92,7 @@ El servidor estará disponible en: `http://localhost:8000`
 
 #### Instalar Dependencias de Node.js
 ```bash
+cd src/test_client
 npm install
 # o si prefieres yarn
 yarn install
@@ -94,6 +100,7 @@ yarn install
 
 #### Ejecutar el Servidor de Desarrollo
 ```bash
+cd src/test_client
 npm run dev
 # o si prefieres yarn
 yarn dev
@@ -103,6 +110,7 @@ El frontend estará disponible en: `http://localhost:3000`
 
 #### Construir para Producción
 ```bash
+cd src/test_client
 npm run build
 # o si prefieres yarn
 yarn build
@@ -113,16 +121,14 @@ yarn build
 ### Endpoints Principales
 
 #### Autenticación
-- `POST /auth/session/token` - Obtener token de acceso
-- `POST /auth/session/init` - Inicializar sesión de servicio
-
-#### Servicios
-- `GET /services/discovery` - Descubrir servicios disponibles
+- `POST /api/chat/session/auth` - Crear nueva sesión con autenticación básica
+- `GET /api/chat/session/{id_session}` - Obtener información de una sesión existente
+- `POST /api/chat/service/initiate` - Inicializar servicio en sesión existente
 
 #### Chat Conversacional
-- `WebSocket /chat/ws/{session_id}` - Conexión WebSocket para chat
-- `GET /chat/sessions/active` - Obtener sesiones activas
-- `DELETE /chat/sessions/{session_id}` - Cerrar sesión específica
+- `WebSocket /api/chat/ws/{id_session}` - Conexión WebSocket para chat
+- `POST /api/chat/session/start` - Iniciar sesión de chat
+- `GET /api/chat/session/{id_session}/status` - Obtener estado de sesión
 
 ### Documentación Interactiva
 Una vez ejecutando el servidor, visita:
@@ -132,11 +138,9 @@ Una vez ejecutando el servidor, visita:
 ## 🔧 Configuración
 
 ### Variables de Entorno (Backend)
-Crea un archivo `.env` en el directorio `api/` con:
+Crea un archivo `.env` en el directorio `src/api/` con:
 ```env
-SECRET_KEY=tu_clave_secreta_jwt
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+GROQ_API_KEY=tu_clave_de_groq_api
 ```
 
 ### Configuración del Frontend
@@ -146,22 +150,19 @@ El frontend se conecta automáticamente al backend en `localhost:8000`. Para cam
 
 ### 1. Autenticación
 ```javascript
-// Solicitar token de acceso
-const response = await fetch('/auth/session/token', {
+// Crear sesión con autenticación básica
+const response = await fetch('/api/chat/session/auth', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-        user: 'usuario',
-        password: 'contraseña',
-        id_service: 'uuid-del-servicio'
-    })
+    headers: { 
+        'Authorization': 'Basic ' + btoa('usuario:contraseña')
+    }
 });
 ```
 
 ### 2. Iniciar Chat
 ```javascript
 // Conectar WebSocket
-const ws = new WebSocket('ws://localhost:8000/chat/ws/session-id');
+const ws = new WebSocket('ws://localhost:8000/api/chat/ws/session-id');
 
 // Enviar mensaje
 ws.send(JSON.stringify({
@@ -170,20 +171,20 @@ ws.send(JSON.stringify({
 ```
 
 ### 3. Interfaz Web
-1. Ejecuta `npm run dev` para el frontend
-2. Ejecuta `python api/main.py` para el backend  
-3. Abre `http://localhost:3000` en tu navegador
-4. Haz clic en "Iniciar Conversación"
-5. Comienza a chatear con el agente
+1. Ejecuta `python src/api/main.py` para el backend
+2. Ejecuta `npm run dev` en `src/test_client/` para el frontend
+3. Abre `http://localhost:5173` en tu navegador (puerto por defecto de Vite)
+4. Usa el widget de chat para interactuar con el agente
 
 ## 🛠️ Tecnologías Utilizadas
 
 ### Backend
 - **FastAPI**: Framework web moderno y rápido
 - **WebSockets**: Comunicación en tiempo real
-- **JWT**: Autenticación segura
+- **SQLite**: Base de datos ligera para sesiones
 - **Uvicorn**: Servidor ASGI de alto rendimiento
-- **Python-multipart**: Manejo de formularios
+- **LangChain**: Framework para aplicaciones de IA
+- **Groq**: API de modelos de lenguaje
 
 ### Frontend
 - **Vue.js 3**: Framework progresivo de JavaScript
@@ -196,10 +197,11 @@ ws.send(JSON.stringify({
 ### Desarrollo Local
 ```bash
 # Terminal 1: Backend
-cd api
+cd src/api
 python main.py
 
 # Terminal 2: Frontend
+cd src/test_client
 npm run dev
 ```
 
@@ -226,8 +228,8 @@ Para producción, considera:
 - `npm run preview` - Vista previa de la build de producción
 
 ### Backend
-- `python api/main.py` - Ejecutar servidor de desarrollo
-- `uvicorn api.main:app --reload` - Alternativa con uvicorn
+- `python src/api/main.py` - Ejecutar servidor de desarrollo
+- `uvicorn src.api.main:app --reload` - Alternativa con uvicorn
 
 ## 🤝 Contribución
 
