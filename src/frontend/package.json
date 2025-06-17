@@ -9,7 +9,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "vite --host 0.0.0.0 --port 8080",
-    "build:production": "vite build --mode production"
+    "build:production": "vite build --mode production",
+    "test": "vitest",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest watch"
   },
   "dependencies": {
     "vue": "^3.3.0"
