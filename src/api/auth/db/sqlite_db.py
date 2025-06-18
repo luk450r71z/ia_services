@@ -1,6 +1,6 @@
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 import logging
 from pathlib import Path
@@ -94,7 +94,7 @@ def create_session_db(type_value=None, content=None, configs=None):
         cursor = conn.cursor()
 
         id_session = str(uuid4())
-        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         
         # Convertir content y configs a JSON si se proporcionan
         content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
@@ -121,8 +121,8 @@ def create_session_db(type_value=None, content=None, configs=None):
         
         if session:
             # Convertir los timestamps a datetime para consistencia
-            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S")
-            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S")
+            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             # Convertir content y configs de JSON string a dict
             try:
                 if session['content'] and session['content'] != '{}':
@@ -174,8 +174,8 @@ def get_session_db(id_session: str):
 
         if session:
             # Convertir timestamps a datetime
-            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S")
-            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S")
+            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             # Convertir content y configs de JSON string a dict
             try:
                 if session['content'] and session['content'] != '{}':
@@ -218,7 +218,7 @@ def update_session_db(id_session: str, type_value: str, status: str, content: di
         conn = get_db()
         cursor = conn.cursor()
 
-        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         content_json = json.dumps(content, ensure_ascii=False) if content else '{}'
         configs_json = json.dumps(configs, ensure_ascii=False) if configs else '{}'
         
@@ -240,8 +240,8 @@ def update_session_db(id_session: str, type_value: str, status: str, content: di
         
         if session:
             # Convertir timestamps a datetime
-            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S")
-            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S")
+            session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             # Convertir content y configs de JSON string a dict
             try:
                 session['content'] = json.loads(session['content']) if session['content'] else None

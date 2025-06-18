@@ -2,10 +2,11 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, Any
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..models.schemas import WebSocketMessage, WebSocketMessageType
 from .conversation_manager import conversation_manager
+from langchain_core.messages import AIMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class WebSocketManager:
                     type=WebSocketMessageType(message_type),
                     content=content,
                     data=data,
-                    timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 )
                 await self.active_connections[id_session].send_text(message.json())
         except Exception as e:
@@ -95,17 +96,38 @@ class WebSocketManager:
                 }
             )
             
-            # Inicializar agente y enviar mensaje de bienvenida
-            welcome_message = await conversation_manager.initialize_conversation(id_session, session_data)
-            if welcome_message:
-                await self.send_message(
-                    id_session,
-                    "agent_response", 
-                    welcome_message,
-                    {"is_welcome": True}
-                )
+            # Solo inicializar agente y enviar mensaje de bienvenida si la sesión está en estado 'initiated'
+            if session_data.get('status') == 'initiated':
+                welcome_message = await conversation_manager.initialize_conversation(id_session, session_data)
+                if welcome_message:
+                    await self.send_message(
+                        id_session,
+                        "agent_response", 
+                        welcome_message,
+                        {"is_welcome": True}
+                    )
+                else:
+                    logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {id_session}")
             else:
-                logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {id_session}")
+                # Si la sesión ya está started, recuperar el agente y enviar el historial
+                agent = await conversation_manager.initialize_conversation(id_session, session_data)
+                if agent:
+                    # Enviar el historial de la conversación
+                    for message in agent.state.messages:
+                        if hasattr(message, 'content'):
+                            # Determinar el tipo de mensaje basado en la clase
+                            if isinstance(message, AIMessage):
+                                await self.send_message(
+                                    id_session,
+                                    "agent_response",
+                                    message.content
+                                )
+                            elif isinstance(message, HumanMessage):
+                                await self.send_message(
+                                    id_session,
+                                    "user_message",
+                                    message.content
+                                )
                 
         except Exception as e:
             logger.error(f"❌ Error en inicialización: {str(e)}")
