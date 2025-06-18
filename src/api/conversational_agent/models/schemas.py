@@ -5,16 +5,12 @@ from enum import Enum
 
 # ===== Enums =====
 
-class ServiceType(str, Enum):
-    """Tipos de servicios disponibles"""
-    QUESTIONNAIRE = "questionnaire"
-
 class SessionStatus(str, Enum):
     """Estados posibles de una sesión"""
     NEW = "new"
     INITIATED = "initiated"
     STARTED = "started"
-    COMPLETED = "completed"
+    ENDED = "ended"
     EXPIRED = "expired"
 
 class AnswerType(str, Enum):
@@ -23,16 +19,6 @@ class AnswerType(str, Enum):
     LONG_TEXT = "long_text"
     MULTIPLE_CHOICE = "multiple_choice"
     SINGLE_CHOICE = "single_choice"
-
-# ===== Modelos de Sesión =====
-
-class ChatSession(BaseModel):
-    """Modelo para sesiones de chat"""
-    id_session: str = Field(..., min_length=1)
-    created_at: datetime
-    is_active: bool = True
-    last_activity: Optional[datetime] = None
-    message_count: int = Field(default=0, ge=0)
 
 # ===== Modelos de Cuestionario =====
 
@@ -73,38 +59,17 @@ class InitiateServiceResponse(BaseModel):
     id_session: str
     urls: ServiceUrls
 
-# ===== Modelos de Respuestas =====
-
-class QuestionnaireResponse(BaseModel):
-    """Modelo para respuestas del cuestionario"""
-    id_session: str
-    question: str
-    answer: str
-    question_number: int
-    total_questions: int
-    timestamp: datetime
-
-class ConversationSummary(BaseModel):
-    """Resumen de la conversación completa"""
-    id_session: str
-    service_type: str
-    questions_count: int
-    responses: list[QuestionnaireResponse]
-    status: SessionStatus
+# ===== Modelos de WebSocket =====
 
 class WebSocketMessageType(str, Enum):
     """Tipos de mensajes WebSocket"""
-    QUESTION = "question"
-    ANSWER = "answer"
-    ERROR = "error"
-    COMPLETED = "completed"
-    UI_CONFIG = "ui_config"
     AGENT_RESPONSE = "agent_response"
-    WELCOME_MESSAGE = "welcome_message"
+    ERROR = "error"
+    UI_CONFIG = "ui_config"
 
 class WebSocketMessage(BaseModel):
     """Modelo para mensajes WebSocket"""
     type: WebSocketMessageType
     content: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")) 
+    timestamp: datetime = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))

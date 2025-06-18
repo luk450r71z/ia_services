@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     type TEXT CHECK(length(type) > 0 AND length(type) <= 50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status TEXT CHECK(status IN ('new', 'initiated', 'started', 'complete', 'expired')),
+    status TEXT CHECK(status IN ('new', 'initiated', 'started', 'ended', 'expired')),
     content JSON DEFAULT '{}',
     configs JSON DEFAULT '{}',
     logs JSON DEFAULT '[]'

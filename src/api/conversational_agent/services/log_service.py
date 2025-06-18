@@ -3,7 +3,7 @@ import aiohttp
 import json
 from typing import Optional, Dict, Any
 
-from ..models.log_models import MessageLog, LogStatus, WebhookEvent
+from ..models.log_models import MessageLog, LogStatus
 from .session_service import SessionService
 from auth.db.sqlite_db import update_session_logs, get_session_logs
 
@@ -81,20 +81,13 @@ class LogService:
             
             webhook_url = session_data['configs']['webhook_url']
             
-            event = WebhookEvent(
-                id_session=log.id_session,
-                message_type=log.message_type,
-                content=log.content,
-                timestamp=log.timestamp,
-                status=log.status,
-                attempt_number=log.attempt_number,
-                metadata=log.metadata
-            )
+            # Convertir log a diccionario para el webhook
+            webhook_data = json.loads(log.json())
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     webhook_url,
-                    json=json.loads(event.json()),
+                    json=webhook_data,
                     timeout=5
                 ) as response:
                     # Actualizar el log existente con la información del webhook

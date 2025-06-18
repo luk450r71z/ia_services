@@ -174,7 +174,7 @@ class SessionService:
             updated_session = update_session_db(
                 id_session=id_session,
                 type_value=session_data.get('type', 'unknown'),
-                status="complete",
+                status="ended",
                 content=final_content,
                 configs=session_data.get('configs', {})
             )
