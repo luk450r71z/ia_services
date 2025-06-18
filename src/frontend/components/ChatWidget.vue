@@ -175,6 +175,8 @@
             console.log('🔒 Conversation completed in chat-ui');
             this.$emit('conversation-complete', data.data.summary);
           }
+        } else if (data.type === 'user_message') {
+          this.addMessage('user', data.content);
         } else if (data.type === 'ui_config') {
           console.log('🔧 ChatWidget received ui_config:', data);
           this.$emit('ui-config', data);

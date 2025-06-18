@@ -5,6 +5,7 @@ import os
 import datetime
 import json
 import logging
+from datetime import timezone
 
 from ..models.conversation_models import ConversationState
 from ..utils.env_utils import load_env_variables
@@ -219,7 +220,7 @@ Let's begin:""")
             # Crear nombre de archivo para respuestas
             if self.questions:
                 # Usar timestamp para hacer el archivo único
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                timestamp = datetime.datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
                 response_file = f"data/user_responses_custom_{timestamp}.json"
             else:
                 response_file = "data/user_responses.json"

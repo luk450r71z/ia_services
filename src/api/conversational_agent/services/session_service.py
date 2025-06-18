@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 import json
 
@@ -23,7 +23,7 @@ class SessionService:
                 logger.error(f"Invalid date format in session: {created_at}")
                 return False
             
-            return datetime.strptime(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "%Y-%m-%d %H:%M:%S") - created_at <= timedelta(minutes=5)
+            return datetime.now(timezone.utc) - created_at <= timedelta(minutes=5)
         except (KeyError, ValueError) as e:
             logger.error(f"Error validating session expiration: {str(e)}")
             return False
@@ -32,6 +32,7 @@ class SessionService:
     def validate_and_start_session(id_session: str) -> Optional[Dict[str, Any]]:
         """Valida y actualiza el estado de una sesión para WebSocket.
         Si la sesión está en estado 'initiated', la marca como 'started'.
+        Si la sesión ya está en estado 'started', permite reconexión.
         Retorna la sesión actualizada o None si hay algún error."""
         session = get_session_db(id_session)
         if not session:
@@ -50,16 +51,12 @@ class SessionService:
             logger.warning(f"Session expirada: {id_session}")
             return None
         
-        # Debe estar initiated
-        if session['status'] not in ['initiated']:
-            logger.warning(f"Estado de sesión inválido para iniciar: {session['status']}")
+        # Validar estados permitidos para conexión WebSocket
+        estados_permitidos = ['initiated', 'started']
+        if session['status'] not in estados_permitidos:
+            logger.warning(f"Estado de sesión no permitido para conexión WebSocket: {session['status']}")
             return None
         
-        # Validar que tenga contenido válido
-        if not isinstance(session.get('content'), dict):
-            logger.warning(f"Contenido de sesión inválido: {id_session}")
-            return None
-            
         # Si está initiated, actualizar a started
         if session['status'] == 'initiated':
             updated_session = update_session_db(
@@ -75,8 +72,13 @@ class SessionService:
             else:
                 logger.warning(f"⚠️ No se pudo actualizar estado de sesión: {id_session}")
                 return None
-                
-        return session
+        
+        # Si ya está started, permitir reconexión
+        if session['status'] == 'started':
+            logger.info(f"✅ Reconexión permitida para sesión {id_session} en estado 'started'")
+            return session
+            
+        return None
 
     @staticmethod
     def validate_and_initiate_session(id_session: str, new_content: Dict[str, Any] = None, new_configs: Dict[str, Any] = None, session_type: str = None) -> Dict[str, Any]:
@@ -98,13 +100,10 @@ class SessionService:
             )
             raise ValueError(f"Sesión expirada. Máximo 5 minutos desde la creación")
         
-        # Validar que la sesión no esté en estado started
-        if session['status'] == 'started':
-            raise ValueError("No se puede reiniciar una sesión que ya está en estado 'started'")
-        # Validar que la sesión no esté en estado ended
-        if session['status'] == 'ended':
-            raise ValueError("No se puede reiniciar una sesión que ya está en estado 'ended'")
-        
+        # Validar estados no permitidos
+        estados_no_permitidos = ['started', 'ended', 'initiated']
+        if session['status'] in estados_no_permitidos:
+            raise ValueError(f"No se puede reiniciar una sesión que ya está en estado '{session['status']}'")
         
         # Validar tipos de datos para nuevo contenido/configs
         if new_content is not None and not isinstance(new_content, dict):

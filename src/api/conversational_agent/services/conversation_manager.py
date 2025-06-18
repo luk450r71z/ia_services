@@ -16,8 +16,8 @@ class ConversationManager:
     def __init__(self):
         self.active_agents: Dict[str, ConversationalAgent] = {}
     
-    async def initialize_conversation(self, id_session: str, session_data: Dict = None) -> Optional[str]:
-        """Initializes a conversation by creating the agent and returning the welcome message"""
+    async def initialize_conversation(self, id_session: str, session_data: Dict = None) -> Optional[Any]:
+        """Initializes a conversation by creating the agent and returning the welcome message or agent"""
         try:
             # Obtener datos de sesión
             session_data = get_session_db(id_session)
@@ -25,6 +25,11 @@ class ConversationManager:
             if not session_data:
                 logger.error(f"❌ Session not found in DB: {id_session}")
                 return None
+            
+            # Si ya existe un agente activo, retornarlo
+            if id_session in self.active_agents:
+                logger.info(f"✅ Recuperando agente existente para sesión: {id_session}")
+                return self.active_agents[id_session]
             
             # Create agent
             agent = self._create_agent(session_data)

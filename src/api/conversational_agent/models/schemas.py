@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -64,6 +64,7 @@ class InitiateServiceResponse(BaseModel):
 class WebSocketMessageType(str, Enum):
     """Tipos de mensajes WebSocket"""
     AGENT_RESPONSE = "agent_response"
+    USER_MESSAGE = "user_message"
     ERROR = "error"
     UI_CONFIG = "ui_config"
 
@@ -72,4 +73,4 @@ class WebSocketMessage(BaseModel):
     type: WebSocketMessageType
     content: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
