@@ -6,6 +6,7 @@ from .log_service import log_service
 from .notification_service import notification_service
 from ..models.log_models import LogStatus
 from ..models.agent_protocol import ConversationalAgent
+from auth.db.sqlite_db import get_session_db
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +19,9 @@ class ConversationManager:
     async def initialize_conversation(self, id_session: str, session_data: Dict = None) -> Optional[str]:
         """Initializes a conversation by creating the agent and returning the welcome message"""
         try:
-            # Use provided data or get from DB
-            if not session_data:
-                session_data = SessionService.get_session(id_session)
-                
+            # Obtener datos de sesión
+            session_data = get_session_db(id_session)
+            
             if not session_data:
                 logger.error(f"❌ Session not found in DB: {id_session}")
                 return None

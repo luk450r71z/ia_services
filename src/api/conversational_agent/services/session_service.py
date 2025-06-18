@@ -29,20 +29,29 @@ class SessionService:
             return False
 
     @staticmethod
-    def validate_session_for_start(id_session: str) -> Optional[Dict[str, Any]]:
-        """Valida sesión para WebSocket - debe estar 'initiated' o 'started' y no expirada"""
+    def validate_and_start_session(id_session: str) -> Optional[Dict[str, Any]]:
+        """Valida y actualiza el estado de una sesión para WebSocket.
+        Si la sesión está en estado 'initiated', la marca como 'started'.
+        Retorna la sesión actualizada o None si hay algún error."""
         session = get_session_db(id_session)
         if not session:
             logger.warning(f"Session not found: {id_session}")
             return None
         
-        # Verificar expiración
+        # Verificar expiración y marcar como expired si es necesario
         if not SessionService._validate_session_expiration(session):
+            update_session_db(
+                id_session=id_session,
+                type_value=session.get('type'),
+                status="expired",
+                content=session.get('content', {}),
+                configs=session.get('configs', {})
+            )
             logger.warning(f"Session expirada: {id_session}")
             return None
         
-        # Debe estar initiated para poder iniciar WebSocket
-        if session['status'] not in ['initiated', 'started']:
+        # Debe estar initiated
+        if session['status'] not in ['initiated']:
             logger.warning(f"Estado de sesión inválido para iniciar: {session['status']}")
             return None
         
@@ -51,11 +60,29 @@ class SessionService:
             logger.warning(f"Contenido de sesión inválido: {id_session}")
             return None
             
+        # Si está initiated, actualizar a started
+        if session['status'] == 'initiated':
+            updated_session = update_session_db(
+                id_session=id_session,
+                type_value=session.get('type'),
+                status="started",
+                content=session.get('content'),
+                configs=session.get('configs', {})
+            )
+            if updated_session:
+                logger.info(f"✅ Sesión {id_session} actualizada a 'started'")
+                return updated_session
+            else:
+                logger.warning(f"⚠️ No se pudo actualizar estado de sesión: {id_session}")
+                return None
+                
         return session
 
     @staticmethod
-    def validate_session_for_initiate(id_session: str) -> Dict[str, Any]:
-        """Valida y obtiene sesión para inicialización - marca como expired si es necesario"""
+    def validate_and_initiate_session(id_session: str, new_content: Dict[str, Any] = None, new_configs: Dict[str, Any] = None, session_type: str = None) -> Dict[str, Any]:
+        """Valida y actualiza el estado de una sesión para inicialización.
+        Si se proporcionan, actualiza el contenido y configuraciones.
+        Retorna la sesión actualizada o lanza una excepción si hay algún error."""
         session = get_session_db(id_session)
         if not session:
             raise ValueError("Sesión no encontrada")
@@ -74,43 +101,12 @@ class SessionService:
         # Validar que la sesión no esté en estado started
         if session['status'] == 'started':
             raise ValueError("No se puede reiniciar una sesión que ya está en estado 'started'")
-            
-        return session
-
-    # ===== Métodos de obtención de datos =====
-    
-    @staticmethod
-    def get_session(id_session: str) -> Optional[Dict[str, Any]]:
-        """Obtiene los datos de una sesión"""
-        return get_session_db(id_session)
-
-    # ===== Métodos de actualización/estado =====
-    
-    @staticmethod
-    def initiate_session(id_session: str) -> Dict[str, Any]:
-        """Inicializa una sesión cambiando su status a 'initiated'"""
-        session = SessionService.validate_session_for_initiate(id_session)
+        # Validar que la sesión no esté en estado ended
+        if session['status'] == 'ended':
+            raise ValueError("No se puede reiniciar una sesión que ya está en estado 'ended'")
         
-        # Actualizar la sesión en la base de datos
-        updated_session = update_session_db(
-            id_session=id_session,
-            type_value=session.get('type'),
-            status="initiated",
-            content=session.get('content', {}),
-            configs=session.get('configs', {})
-        )
         
-        if not updated_session:
-            raise Exception("Error al actualizar la sesión")
-            
-        return updated_session
-
-    @staticmethod
-    def update_session_content_and_configs(id_session: str, new_content: Dict[str, Any] = None, new_configs: Dict[str, Any] = None, session_type: str = None) -> Dict[str, Any]:
-        """Actualiza el content y configs de una sesión reemplazando el contenido completo"""
-        session = SessionService.validate_session_for_initiate(id_session)
-        
-        # Validar tipos de datos
+        # Validar tipos de datos para nuevo contenido/configs
         if new_content is not None and not isinstance(new_content, dict):
             raise ValueError("El contenido debe ser un diccionario")
         if new_configs is not None and not isinstance(new_configs, dict):
@@ -120,15 +116,11 @@ class SessionService:
         final_content = new_content if new_content is not None else session.get('content', {})
         final_configs = new_configs if new_configs is not None else session.get('configs', {})
         
-        # Validar que no se esté intentando actualizar una sesión started
-        if session['status'] == 'started':
-            raise ValueError("No se puede actualizar una sesión que ya está en estado 'started'")
-        
-        # Actualizar usando la función existente
+        # Actualizar la sesión con nuevo contenido/configs y estado initiated
         updated_session = update_session_db(
             id_session=id_session,
             type_value=session_type or session.get('type'),
-            status=session.get('status', 'new'),
+            status="initiated",
             content=final_content,
             configs=final_configs
         )
@@ -137,19 +129,6 @@ class SessionService:
             raise Exception("Error al actualizar la sesión")
             
         return updated_session
-
-    @staticmethod
-    def mark_session_as_started(id_session: str, session_data: Dict[str, Any]) -> None:
-        """Marca una sesión como 'started'"""
-        if session_data['status'] == 'initiated':
-            update_session_db(
-                id_session=id_session,
-                type_value=session_data.get('type'),
-                status="started",
-                content=session_data.get('content'),
-                configs=session_data.get('configs', {})
-            )
-            logger.info(f"✅ Sesión {id_session} actualizada a 'started'")
 
     # ===== Métodos de finalización =====
     

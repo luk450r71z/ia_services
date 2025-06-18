@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 
 from ..models.log_models import MessageLog, LogStatus
 from .session_service import SessionService
-from auth.db.sqlite_db import update_session_logs, get_session_logs
+from auth.db.sqlite_db import update_session_logs, get_session_logs, get_session_db
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +69,8 @@ class LogService:
     async def _send_to_webhook(self, log: MessageLog) -> None:
         """Envía el log al webhook configurado"""
         try:
-            # Obtener configuración de la sesión
-            session_data = SessionService.get_session(log.id_session)
+            # Obtener datos de sesión
+            session_data = get_session_db(log.id_session)
             if not session_data:
                 logger.warning(f"No se encontró la sesión {log.id_session}")
                 return

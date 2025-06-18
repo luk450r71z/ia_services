@@ -32,18 +32,13 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
     service_type = "questionnaire"  # Tipo implícito en el endpoint
     
     try:
-        # Actualizar la sesión con la configuración proporcionada
-        if request.content or request.configs:
-            SessionService.update_session_content_and_configs(
-                id_session=id_session,
-                new_content=request.content.model_dump() if request.content else None,
-                new_configs=request.configs.model_dump() if request.configs else None,
-                session_type=service_type
-            )
-            logger.info(f"Session {id_session} updated with new configuration")
-        
-        # Usar servicio para inicializar la sesión en la base de datos
-        session_data = SessionService.initiate_session(id_session)
+        # Inicializar la sesión con la configuración proporcionada
+        session_data = SessionService.validate_and_initiate_session(
+            id_session=id_session,
+            new_content=request.content.model_dump() if request.content else None,
+            new_configs=request.configs.model_dump() if request.configs else None,
+            session_type=service_type
+        )
         
         logger.info(f"Service '{service_type}' started successfully for session: {id_session}")
         
@@ -99,7 +94,7 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
     """
     try:
         # Validación usando servicio
-        session_data = SessionService.validate_session_for_start(id_session)
+        session_data = SessionService.validate_and_start_session(id_session)
         
         if not session_data:
             logger.warning(f"❌ Invalid or expired session: {id_session}")
@@ -116,12 +111,9 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
         try:
             # Conectar WebSocket e inicializar agente
             await websocket_manager.connect_and_initialize(websocket, id_session, session_data)
-            
-            # Si llegamos aquí, la inicialización fue exitosa
-            SessionService.mark_session_as_started(id_session, session_data)
-            
             # Manejar comunicación completa
             await websocket_manager.handle_connection_lifecycle(websocket, id_session)
+            
         except Exception as e:
             logger.error(f"❌ Error en inicialización de WebSocket: {str(e)}")
             await websocket.close(code=1011, reason="Internal server error")
