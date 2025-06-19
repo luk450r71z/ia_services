@@ -55,12 +55,12 @@ async def initiate_questionnaire(request: InitiateServiceRequest):
         
     except ValueError as e:
         # Errores de validación del servicio
-        if "no encontrada" in str(e):
+        if "not found" in str(e).lower():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=str(e)
             )
-        elif "expirada" in str(e):
+        elif "expired" in str(e).lower():
             raise HTTPException(
                 status_code=status.HTTP_410_GONE,
                 detail=str(e)
