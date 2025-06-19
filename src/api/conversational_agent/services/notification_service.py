@@ -98,31 +98,44 @@ class NotificationService:
         
         # Crear mensaje
         message = self.mime_multipart()
-        message["Subject"] = f"Entrevista Completada - Sesión {session_data['id_session']}"
+        message["Subject"] = f"Session {session_data['id_session']} ended"
         message["From"] = self.smtp_username
         message["To"] = ", ".join(email_list)
         
-        # Crear contenido HTML
+        # Crear contenido HTML mejorado
+        responses = conversation_summary.get('responses', {})
+        table_rows = ""
+        for question, answer in responses.items():
+            table_rows += f"<tr><td style='padding:8px; border:1px solid #ddd;'><strong>{question}</strong></td><td style='padding:8px; border:1px solid #ddd;'>{answer}</td></tr>"
+
         html_content = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h2 style="color: #2c3e50; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px;">Entrevista Completada</h2>
-                <p style="margin: 15px 0;"><strong>Sesión ID:</strong> {session_data['id_session']}</p>
+        <body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;\">
+            <div style=\"background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);\">
+                <h2 style=\"color: #2c3e50; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px;\">Questionnaire Completed</h2>
+                <p style=\"margin: 15px 0;\"><strong>Session ID:</strong> {session_data['id_session']}</p>
                 
-                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                    <h3 style="color: #2c3e50; margin-top: 0;">Resumen</h3>
-                    <ul style="margin: 0; padding-left: 20px;">
-                        <li><strong>Preguntas realizadas:</strong> {conversation_summary['questions_asked']}</li>
-                        <li><strong>Total de preguntas:</strong> {conversation_summary['total_questions']}</li>
+                <div style=\"background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;\">
+                    <h3 style=\"color: #2c3e50; margin-top: 0;\">Summary</h3>
+                    <ul style=\"margin: 0; padding-left: 20px;\">
+                        <li><strong>Questions asked:</strong> {conversation_summary['questions_asked']}</li>
+                        <li><strong>Total questions:</strong> {conversation_summary['total_questions']}</li>
                     </ul>
                 </div>
                 
-                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px;">
-                    <h3 style="color: #2c3e50; margin-top: 0;">Respuestas</h3>
-                    <pre style="background-color: #ffffff; padding: 15px; border-radius: 5px; margin: 0; white-space: pre-wrap; font-family: monospace;">
-{json.dumps(conversation_summary['responses'], indent=2, ensure_ascii=False)}
-                    </pre>
+                <div style=\"background-color: #f8f9fa; padding: 15px; border-radius: 5px;\">
+                    <h3 style=\"color: #2c3e50; margin-top: 0;\">Answers</h3>
+                    <table style='width:100%; border-collapse:collapse; background:#fff;'>
+                        <thead>
+                            <tr style='background:#f0f0f0;'>
+                                <th style='padding:8px; border:1px solid #ddd; text-align:left;'>Question</th>
+                                <th style='padding:8px; border:1px solid #ddd; text-align:left;'>Answer</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table_rows}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </body>

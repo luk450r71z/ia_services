@@ -72,7 +72,9 @@ class WebSocketManager:
                 result["response"],
                 {
                     "is_complete": result["is_complete"],
-                    "summary": result["summary"]
+                    "summary": result["summary"],
+                    "answerType": result.get("answerType"),
+                    "options": result.get("options")
                 }
             )
             
@@ -96,39 +98,54 @@ class WebSocketManager:
                 }
             )
             
-            # Solo inicializar agente y enviar mensaje de bienvenida si la sesión está en estado 'initiated'
-            if session_data.get('status') == 'initiated':
-                welcome_message = await conversation_manager.initialize_conversation(id_session, session_data)
-                if welcome_message:
-                    await self.send_message(
-                        id_session,
-                        "agent_response", 
-                        welcome_message,
-                        {"is_welcome": True}
-                    )
-                else:
-                    logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {id_session}")
-            else:
-                # Si la sesión ya está started, recuperar el agente y enviar el historial
-                agent = await conversation_manager.initialize_conversation(id_session, session_data)
-                if agent:
-                    # Enviar el historial de la conversación
-                    for message in agent.state.messages:
-                        if hasattr(message, 'content'):
-                            # Determinar el tipo de mensaje basado en la clase
-                            if isinstance(message, AIMessage):
-                                await self.send_message(
-                                    id_session,
-                                    "agent_response",
-                                    message.content
-                                )
-                            elif isinstance(message, HumanMessage):
-                                await self.send_message(
-                                    id_session,
-                                    "user_message",
-                                    message.content
-                                )
+            # Inicializar agente - ahora siempre retorna el objeto agente
+            agent = await conversation_manager.initialize_conversation(id_session, session_data)
+            if agent:
+                # Enviar historial de mensajes (incluyendo el de bienvenida)
+                for message in agent.state.messages:
+                    if hasattr(message, 'content'):
+                        if isinstance(message, AIMessage):
+                            await self.send_message(
+                                id_session,
+                                "agent_response",
+                                message.content
+                            )
+                        elif isinstance(message, HumanMessage):
+                            await self.send_message(
+                                id_session,
+                                "user_message",
+                                message.content
+                            )
                 
+                # Enviar el estado actual con answerType y options si la conversación no está completa
+                if not agent.is_conversation_complete():
+                    # Obtener answerType y options de la pregunta actual
+                    answerType = None
+                    options = None
+                    if hasattr(agent, 'state') and hasattr(agent.state, 'current_question_index'):
+                        # Obtener datos de sesión para acceder al contenido original
+                        if session_data and session_data.get('content'):
+                            questions = session_data['content'].get('questions', [])
+                            current_index = agent.state.current_question_index
+                            if current_index < len(questions):
+                                current_question = questions[current_index]
+                                answerType = current_question.get("answerType")
+                                options = current_question.get("options")
+                    
+                    # Si hay opciones actuales, enviar un mensaje de estado actual
+                    if answerType and options:
+                        await self.send_message(
+                            id_session,
+                            "agent_response",
+                            "Please continue with your selection:",
+                            {
+                                "is_current_state": True,
+                                "answerType": answerType,
+                                "options": options
+                            }
+                        )
+            else:
+                logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {id_session}")
         except Exception as e:
             logger.error(f"❌ Error en inicialización: {str(e)}")
             await self.disconnect(id_session)

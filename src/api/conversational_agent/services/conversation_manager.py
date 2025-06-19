@@ -16,8 +16,8 @@ class ConversationManager:
     def __init__(self):
         self.active_agents: Dict[str, ConversationalAgent] = {}
     
-    async def initialize_conversation(self, id_session: str, session_data: Dict = None) -> Optional[Any]:
-        """Initializes a conversation by creating the agent and returning the welcome message or agent"""
+    async def initialize_conversation(self, id_session: str, session_data: Dict = None) -> Optional[ConversationalAgent]:
+        """Initializes a conversation by creating the agent and returning the agent object"""
         try:
             # Obtener datos de sesión
             session_data = get_session_db(id_session)
@@ -51,9 +51,8 @@ class ConversationManager:
                 )
             except Exception as e:
                 logger.error(f"Error logging welcome message: {str(e)}")
-                # No propagamos el error para no interrumpir la inicialización
             
-            return welcome_message
+            return agent
             
         except Exception as e:
             logger.error(f"❌ Error initializing conversation {id_session}: {str(e)}")
@@ -79,6 +78,20 @@ class ConversationManager:
             agent_response = agent.process_user_input(message)
             is_complete = agent.is_conversation_complete()
             
+            # Obtener answerType y options de la pregunta actual
+            answerType = None
+            options = None
+            if not is_complete and hasattr(agent, 'state') and hasattr(agent.state, 'current_question_index'):
+                # Obtener datos de sesión para acceder al contenido original
+                session_data = get_session_db(id_session)
+                if session_data and session_data.get('content'):
+                    questions = session_data['content'].get('questions', [])
+                    current_index = agent.state.current_question_index
+                    if current_index < len(questions):
+                        current_question = questions[current_index]
+                        answerType = current_question.get("answerType")
+                        options = current_question.get("options")
+            
             # Log agent response
             await log_service.log_message(
                 id_session=id_session,
@@ -97,7 +110,9 @@ class ConversationManager:
             return {
                 "response": agent_response,
                 "is_complete": is_complete,
-                "summary": summary
+                "summary": summary,
+                "answerType": answerType,
+                "options": options
             }
             
         except Exception as e:
@@ -120,7 +135,7 @@ class ConversationManager:
             return None
         
         if agent_type == "questionnaire":
-            from ..agents.questionnaire_rh import QuestionnaireRHAgent
+            from ..agents.questionnaire import QuestionnaireAgent
             
             content = session_data.get('content', {})
             questions_data = content.get('questions', [])
@@ -131,7 +146,7 @@ class ConversationManager:
             
             logger.info(f"🤖 Creando agente con content completo (questions_data: {len(questions_data)} preguntas)")
             
-            return QuestionnaireRHAgent(content=content)
+            return QuestionnaireAgent(content=content)
         else:
             logger.error(f"❌ Tipo de agente no soportado: {agent_type}")
             return None
