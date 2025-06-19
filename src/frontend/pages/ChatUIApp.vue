@@ -151,11 +151,26 @@ onMounted(async () => {
 })
 </script>
 
+<style>
+/* Estilos globales */
+:root {
+  background: #4a5568;
+}
+
+html, 
+body {
+  margin: 0;
+  padding: 0;
+  background: #4a5568;
+  min-height: 100vh;
+}
+</style>
+
 <style scoped>
 .chat-ui-container {
   min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(135deg, #f7fafc 0%, #e2e8f0 100%);
+  background: #4a5568;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -251,25 +266,28 @@ onMounted(async () => {
 }
 
 .completion-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  padding: 40px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(15px);
-  border-radius: 15px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  background: rgba(74, 85, 104, 0.7);
   z-index: 1000;
-  width: 90%;
-  max-width: 500px;
-  border: 1px solid #e2e8f0;
 }
 
 .completion-content {
-  max-width: 400px;
-  margin: 0 auto;
+  background: white;
+  padding: 40px;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  border: 1px solid #e2e8f0;
 }
 
 .completion-content h2 {

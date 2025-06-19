@@ -360,6 +360,7 @@
     padding: 12px 16px;
     border-radius: 12px;
     max-width: 85%;
+    width: fit-content;
     word-wrap: break-word;
   }
   
@@ -367,12 +368,16 @@
     background: #718096;
     color: white;
     margin-left: auto;
+    text-align: right;
+    min-width: 60px;
   }
   
   .message.agent {
     background: #e2e8f0;
     color: #2d3748;
     margin-right: auto;
+    text-align: left;
+    min-width: 60px;
   }
   
   .message.system {
@@ -380,6 +385,7 @@
     color: white;
     margin: 10px auto;
     text-align: center;
+    min-width: 200px;
     max-width: 95%;
   }
   
