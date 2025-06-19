@@ -364,19 +364,19 @@
   }
   
   .message.user {
-    background: #007bff;
+    background: #718096;
     color: white;
     margin-left: auto;
   }
   
   .message.agent {
-    background: #e9ecef;
-    color: #212529;
+    background: #e2e8f0;
+    color: #2d3748;
     margin-right: auto;
   }
   
   .message.system {
-    background: #dc3545;
+    background: #4a5568;
     color: white;
     margin: 10px auto;
     text-align: center;
@@ -392,7 +392,7 @@
   textarea {
     flex: 1;
     padding: 12px;
-    border: 2px solid #dee2e6;
+    border: 2px solid #e2e8f0;
     border-radius: 12px;
     resize: none;
     height: 60px;
@@ -403,17 +403,17 @@
   
   textarea:focus {
     outline: none;
-    border-color: #007bff;
+    border-color: #4a5568;
   }
   
   textarea:disabled {
-    background: #e9ecef;
+    background: #f7fafc;
     cursor: not-allowed;
   }
   
   .send-button {
     padding: 0 25px;
-    background: #007bff;
+    background: #4a5568;
     color: white;
     border: none;
     border-radius: 12px;
@@ -423,12 +423,12 @@
   }
   
   .send-button:hover:not(:disabled) {
-    background: #0056b3;
+    background: #2d3748;
     transform: translateY(-2px);
   }
   
   .send-button:disabled {
-    background: #6c757d;
+    background: #a0aec0;
     cursor: not-allowed;
   }
   
@@ -437,7 +437,7 @@
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(45, 55, 72, 0.9);
     color: white;
     padding: 10px 20px;
     border-radius: 20px;
@@ -448,9 +448,9 @@
   .options-container {
     margin-bottom: 20px;
     padding: 15px;
-    background: #f8f9fa;
+    background: #f7fafc;
     border-radius: 12px;
-    border: 1px solid #dee2e6;
+    border: 1px solid #e2e8f0;
   }
   
   .single-choice-container,
@@ -461,7 +461,7 @@
   .options-title {
     font-weight: 600;
     margin-bottom: 10px;
-    color: #495057;
+    color: #4a5568;
     font-size: 14px;
   }
   
@@ -481,10 +481,10 @@
   
   .option-button {
     padding: 10px 16px;
-    border: 2px solid #dee2e6;
+    border: 2px solid #e2e8f0;
     border-radius: 8px;
     background: white;
-    color: #495057;
+    color: #4a5568;
     cursor: pointer;
     font-size: 14px;
     transition: all 0.2s ease;
@@ -492,21 +492,21 @@
   }
   
   .option-button:hover {
-    border-color: #007bff;
-    background: #f8f9fa;
+    border-color: #4a5568;
+    background: #f7fafc;
   }
   
   .option-button.selected {
-    background: #007bff;
+    background: #4a5568;
     color: white;
-    border-color: #007bff;
+    border-color: #4a5568;
   }
   
   .checkbox-label {
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    border: 1px solid #dee2e6;
+    border: 1px solid #e2e8f0;
     border-radius: 6px;
     background: white;
     cursor: pointer;
@@ -514,8 +514,8 @@
   }
   
   .checkbox-label:hover {
-    background: #f8f9fa;
-    border-color: #007bff;
+    background: #f7fafc;
+    border-color: #4a5568;
   }
   
   .checkbox-input {
@@ -525,12 +525,12 @@
   
   .checkbox-text {
     font-size: 14px;
-    color: #495057;
+    color: #4a5568;
   }
   
   .send-selection-button {
     padding: 10px 20px;
-    background: #007bff;
+    background: #4a5568;
     color: white;
     border: none;
     border-radius: 8px;
@@ -541,12 +541,12 @@
   }
   
   .send-selection-button:hover:not(:disabled) {
-    background: #0056b3;
+    background: #2d3748;
     transform: translateY(-1px);
   }
   
   .send-selection-button:disabled {
-    background: #6c757d;
+    background: #a0aec0;
     cursor: not-allowed;
     transform: none;
   }

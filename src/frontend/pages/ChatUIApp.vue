@@ -155,7 +155,7 @@ onMounted(async () => {
 .chat-ui-container {
   min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f7fafc 0%, #e2e8f0 100%);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -173,12 +173,12 @@ onMounted(async () => {
 }
 
 .header {
-  color: white;
+  color: #2d3748;
   padding: 20px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(15px);
   border-radius: 15px 15px 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid #e2e8f0;
 }
 
 .header-main {
@@ -205,18 +205,21 @@ onMounted(async () => {
   font-weight: 600;
   opacity: 0.9;
   text-align: center;
+  color: #4a5568;
 }
 
 .header-title {
   margin: 0 0 10px 0;
   font-size: 2.5em;
   font-weight: 700;
+  color: #2d3748;
 }
 
 .header-subtitle {
   margin: 0;
   font-size: 1.1em;
-  opacity: 0.9;
+  opacity: 0.8;
+  color: #4a5568;
 }
 
 .connection-status {
@@ -230,20 +233,21 @@ onMounted(async () => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background-color: #ffc107;
+  background-color: #a0aec0;
 }
 
 .status-indicator.connected {
-  background-color: #4CAF50;
+  background-color: #4a5568;
 }
 
 .status-indicator.disconnected,
 .status-indicator.error {
-  background-color: #f44336;
+  background-color: #718096;
 }
 
 .status-text {
-  opacity: 0.9;
+  opacity: 0.8;
+  color: #4a5568;
 }
 
 .completion-message {
@@ -260,6 +264,7 @@ onMounted(async () => {
   z-index: 1000;
   width: 90%;
   max-width: 500px;
+  border: 1px solid #e2e8f0;
 }
 
 .completion-content {
@@ -269,12 +274,12 @@ onMounted(async () => {
 
 .completion-content h2 {
   margin: 0 0 15px 0;
-  color: #4CAF50;
+  color: #4a5568;
 }
 
 .completion-content p {
   margin: 0;
-  color: #333;
+  color: #2d3748;
   font-size: 1.1em;
   line-height: 1.5;
 }
@@ -282,7 +287,7 @@ onMounted(async () => {
 .footer {
   text-align: center;
   padding: 20px;
-  color: white;
+  color: #4a5568;
   opacity: 0.7;
 }
 
