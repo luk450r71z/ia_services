@@ -128,4 +128,4 @@ async def websocket_endpoint(websocket: WebSocket, id_session: str):
         except:
             pass
     finally:
-        websocket_manager.disconnect(id_session) 
+        await websocket_manager.disconnect(id_session) 

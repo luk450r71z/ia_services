@@ -1,27 +1,6 @@
 <template>
   <div class="chat-ui-container">
-    <!-- Loading state -->
-    <div v-if="loading" class="loading-section">
-      <div class="loading-spinner"></div>
-      <h2>{{ loadingMessage }}</h2>
-      <p class="connection-info">
-        Status: <span class="status" :class="connectionState">{{ connectionState }}</span>
-      </p>
-    </div>
-
-    <!-- Error state -->
-    <div v-else-if="error && !chatSession.isActive" class="error-section">
-      <h2>❌ Connection Error</h2>
-      <p class="error-message">{{ error }}</p>
-      <div class="error-actions">
-        <button @click="startChatUI" class="retry-button">
-          🔄 Retry Connection
-        </button>
-      </div>
-    </div>
-
-    <!-- Active or completed chat state -->
-    <div v-else-if="chatSession.isActive || chatSession.completed" class="chat-section">
+    <div class="chat-section">
       <div class="header">
         <div class="header-main">
           <div class="header-text">
@@ -47,28 +26,30 @@
                connectionState === 'connected' ? 'Connected' : 'Connecting...' }}
           </span>
         </div>
-        
-        <!-- DEBUG: Show configuration status -->
-        <div class="debug-info">
-          <small>
-            👤 Avatar: {{ showAvatar ? 'ON' : 'OFF' }}
-            {{ avatarConfig.url ? ` | 🖼️ With image` : ` | 📝 Initials only` }}
-            {{ chatSession.completed ? ' | 🔒 Chat Ended' : '' }}
-          </small>
-        </div>
       </div>
 
       <ChatWidget 
+        v-if="chatSession.websocketUrl"
         :websocket_url="chatSession.websocketUrl"
         :disabled="chatSession.completed"
         @conversation-complete="onConversationComplete"
         @message-sent="onMessageSent"
         @ui-config="handleUIConfigMessage"
+        @close-widget="onCloseWidget"
+        @connection-state-change="onConnectionStateChange"
         class="chat-widget"
       />
 
+      <!-- Mensaje de finalización cuando el widget se cierra -->
+      <div v-if="chatSession.completed" class="completion-message">
+        <div class="completion-content">
+          <h2>✅ Questionnaire Completed</h2>
+          <p>Thank you for completing the questionnaire. The conversation has ended.</p>
+        </div>
+      </div>
+
       <div class="footer">
-        <small>Chat UI without authentication | Powered by Adaptiera Team</small>
+        <small>Powered by Adaptiera Team</small>
       </div>
     </div>
   </div>
@@ -77,21 +58,16 @@
 <script setup>
 import ChatWidget from '../components/ChatWidget.vue'
 import Avatar from '../components/Avatar.vue'
-import { ref, reactive, onMounted, computed } from 'vue'
-
-// Chat UI states
-const loading = ref(false)
-const error = ref('')
-const connectionState = ref('disconnected')
-const loadingMessage = ref('Preparing connection...')
+import { ref, reactive, onMounted } from 'vue'
 
 // Session state
 const chatSession = reactive({
   websocketUrl: '',
-  isActive: false,
-  completed: false,
-  startTime: null
+  completed: false
 })
+
+// Connection state (controlled by ChatWidget)
+const connectionState = ref('connecting')
 
 // Avatar configuration
 const showAvatar = ref(false)
@@ -108,12 +84,10 @@ const handleUIConfigMessage = (data) => {
     const avatarData = data.data.avatar
     
     if (typeof avatarData === 'boolean') {
-      // Simple configuration: true/false only
       showAvatar.value = avatarData
       avatarConfig.value.show = avatarData
       console.log('👤 Avatar:', showAvatar.value ? 'enabled' : 'disabled')
     } else if (typeof avatarData === 'object' && avatarData !== null) {
-      // Advanced configuration: object with properties
       showAvatar.value = Boolean(avatarData.show)
       avatarConfig.value = {
         show: showAvatar.value,
@@ -131,67 +105,50 @@ const handleUIConfigMessage = (data) => {
   }
 }
 
-// Automatic initialization when component is mounted
-onMounted(() => {
-  console.log('🚀 Chat UI started from webui_url')
-  chatSession.startTime = new Date()
-  startChatUI()
-})
-
 // Function to get WebSocket URL
 const getWebSocketUrl = () => {
-  // Extract id_session from path, assuming format /{id_session}
   const pathParts = window.location.pathname.split('/').filter(Boolean)
-  const idSession = pathParts[0] // First segment after /
-  if (idSession) {
-    const wsUrl = `ws://localhost:8000/api/chat/questionnaire/start/${idSession}`
-    console.log('🔗 WebSocket URL built from pathname:', wsUrl)
-    return wsUrl
+  const idSession = pathParts[0]
+  if (!idSession) {
+    throw new Error('No id_session found in route. Use a URL like http://localhost:8080/{id_session}')
   }
-  throw new Error('No id_session found in route. Use a URL like http://localhost:8080/{id_session}')
-}
-
-// Main chat UI function (simplified)
-const startChatUI = async () => {
-  error.value = ''
-  loading.value = true
-  connectionState.value = 'connecting'
-  
-  try {
-    loadingMessage.value = 'Getting WebSocket URL...'
-    chatSession.websocketUrl = getWebSocketUrl()
-    console.log('🔗 WebSocket URL configured:', chatSession.websocketUrl)
-    
-    loadingMessage.value = 'Connecting...'
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    console.log('✅ Chat UI ready')
-    chatSession.isActive = true
-    connectionState.value = 'connected'
-    
-  } catch (err) {
-    console.error('❌ Error in chat UI:', err)
-    error.value = err.message || 'Error initializing chat UI'
-    connectionState.value = 'error'
-  } finally {
-    loading.value = false
-  }
+  return `ws://localhost:8000/api/chat/questionnaire/start/${idSession}`
 }
 
 // Event handlers
 const onConversationComplete = (summary) => {
   console.log('🏁 Conversation completed:', summary)
-  
-  // Mark conversation as completed without changing view
   chatSession.completed = true
   connectionState.value = 'completed'
-  error.value = ''
   console.log('🔒 Chat locked - conversation ended')
 }
 
 const onMessageSent = (message) => {
   console.log('📤 Message sent from chat UI:', message)
 }
+
+const onCloseWidget = () => {
+  console.log('🔒 Chat Widget closed')
+  chatSession.completed = true
+  connectionState.value = 'completed'
+}
+
+const onConnectionStateChange = (state) => {
+  console.log('🔗 ChatWidget connection state changed:', state)
+  connectionState.value = state
+}
+
+// Initialize on mount
+onMounted(async () => {
+  console.log('🚀 Chat UI started')
+  try {
+    chatSession.websocketUrl = getWebSocketUrl()
+    console.log('🔗 WebSocket URL configured:', chatSession.websocketUrl)
+  } catch (err) {
+    console.error('❌ Error getting WebSocket URL:', err)
+    connectionState.value = 'error'
+  }
+})
 </script>
 
 <style scoped>
@@ -206,91 +163,13 @@ const onMessageSent = (message) => {
   align-items: center;
 }
 
-.loading-section {
-  text-align: center;
-  color: white;
-  padding: 50px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  max-width: 400px;
-  width: 100%;
-}
-
-.loading-spinner {
-  width: 70px;
-  height: 70px;
-  border: 5px solid rgba(255, 255, 255, 0.3);
-  border-left: 5px solid white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 25px;
-}
-
-.connection-info {
-  margin-top: 15px;
-  font-size: 14px;
-  opacity: 0.9;
-}
-
-.status {
-  font-weight: 600;
-  text-transform: capitalize;
-}
-
-.status.connecting { color: #ffc107; }
-.status.connected { color: #4CAF50; }
-.status.reconnecting { color: #ff9800; }
-.status.error { color: #f44336; }
-.status.failed { color: #d32f2f; }
-
-.error-section {
-  text-align: center;
-  color: white;
-  padding: 50px;
-  border-radius: 20px;
-  background: rgba(244, 67, 54, 0.1);
-  backdrop-filter: blur(15px);
-  border: 1px solid rgba(244, 67, 54, 0.3);
-  max-width: 500px;
-  width: 100%;
-}
-
-.error-message {
-  margin: 20px 0;
-  padding: 15px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  font-weight: 500;
-}
-
-.error-actions {
-  margin-top: 25px;
-}
-
-.retry-button {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  padding: 12px 25px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.retry-button:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-}
-
 .chat-section {
   width: 100%;
   max-width: 1200px;
   height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .header {
@@ -335,7 +214,7 @@ const onMessageSent = (message) => {
 }
 
 .header-subtitle {
-  margin: 0 0 15px 0;
+  margin: 0;
   font-size: 1.1em;
   opacity: 0.9;
 }
@@ -343,85 +222,72 @@ const onMessageSent = (message) => {
 .connection-status {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
+  font-size: 0.9em;
 }
 
 .status-indicator {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  animation: pulse 2s infinite;
+  background-color: #ffc107;
 }
 
 .status-indicator.connected {
-  background: #4CAF50;
+  background-color: #4CAF50;
 }
 
-.status-indicator.connecting {
-  background: #ffc107;
+.status-indicator.disconnected,
+.status-indicator.error {
+  background-color: #f44336;
 }
 
 .status-text {
-  font-size: 0.9em;
-  font-weight: 500;
+  opacity: 0.9;
 }
 
-.debug-info {
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  font-size: 0.8em;
-  opacity: 0.8;
+.completion-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 40px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(15px);
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  width: 90%;
+  max-width: 500px;
 }
 
-.chat-widget {
-  flex: 1;
-  border-radius: 0;
-  border-top: none;
+.completion-content {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.completion-content h2 {
+  margin: 0 0 15px 0;
+  color: #4CAF50;
+}
+
+.completion-content p {
+  margin: 0;
+  color: #333;
+  font-size: 1.1em;
+  line-height: 1.5;
 }
 
 .footer {
   text-align: center;
+  padding: 20px;
   color: white;
-  padding: 15px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(15px);
-  border-radius: 0 0 15px 15px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-top: none;
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .chat-ui-container {
-    padding: 10px;
-  }
-  
-  .header-title {
-    font-size: 2em;
-  }
-  
-  .header-main {
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-  }
-  
-  .header-text {
-    text-align: center;
-  }
 }
 </style> 

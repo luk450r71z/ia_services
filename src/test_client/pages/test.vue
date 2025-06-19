@@ -31,6 +31,7 @@
       <ChatWidget 
         :websocket_url="chatSession.websocketUrl"
         @conversation-complete="onConversationComplete"
+        @close-widget="onCloseWidget"
       />
     </div>
   </div>
@@ -150,6 +151,14 @@ const createAndInitializeSession = async (content, config) => {
 
 // Función para manejar finalización del chat
 const onConversationComplete = () => {
+  chatSession.isActive = false
+  chatSession.websocketUrl = ''
+  chatSession.completed = true
+  error.value = ''
+}
+
+// Función para manejar evento close-widget
+const onCloseWidget = () => {
   chatSession.isActive = false
   chatSession.websocketUrl = ''
   chatSession.completed = true

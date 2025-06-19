@@ -6,14 +6,67 @@
           :key="index" 
           :class="['message', message.role]"
         >
-          <strong v-if="message.role === 'user'">👤 Tú:</strong>
-          <strong v-else-if="message.role === 'agent'">🤖 Agente:</strong>
-          <strong v-else-if="message.role === 'system'">⚠️ Sistema:</strong>
+          <strong v-if="message.role === 'user'">👤 You:</strong>
+          <strong v-else-if="message.role === 'agent'">🤖 Agent:</strong>
+          <strong v-else-if="message.role === 'system'">⚠️ System:</strong>
           {{ message.content }}
         </div>
       </div>
       
-      <div class="input-container">
+      <!-- Controles dinámicos según answerType -->
+      <div v-if="currentAnswerType && currentOptions && currentOptions.length > 0" class="options-container">
+        <!-- Single Choice - Botones -->
+        <div v-if="currentAnswerType === 'single_choice'" class="single-choice-container">
+          <div class="options-title">Select one option:</div>
+          <div class="options-buttons">
+            <button 
+              v-for="option in currentOptions" 
+              :key="option"
+              @click="selectSingleChoice(option)"
+              :class="['option-button', { 'selected': selectedSingleChoice === option }]"
+            >
+              {{ option }}
+            </button>
+          </div>
+          <button 
+            @click="sendSelection"
+            :disabled="!hasValidSelection"
+            class="send-selection-button"
+          >
+            Send Selection
+          </button>
+        </div>
+        
+        <!-- Multiple Choice - Checkboxes -->
+        <div v-else-if="currentAnswerType === 'multiple_choice'" class="multiple-choice-container">
+          <div class="options-title">Select one or more options:</div>
+          <div class="options-checkboxes">
+            <label 
+              v-for="option in currentOptions" 
+              :key="option"
+              class="checkbox-label"
+            >
+              <input 
+                type="checkbox" 
+                :value="option"
+                v-model="selectedMultipleChoices"
+                class="checkbox-input"
+              >
+              <span class="checkbox-text">{{ option }}</span>
+            </label>
+          </div>
+          <button 
+            @click="sendSelection"
+            :disabled="!hasValidSelection"
+            class="send-selection-button"
+          >
+            Send Selection ({{ selectionCount }})
+          </button>
+        </div>
+      </div>
+      
+      <!-- Input de texto normal -->
+      <div v-else class="input-container">
         <textarea 
           id="user-input" 
           v-model="userInput"
@@ -31,15 +84,7 @@
       </div>
       
       <div v-if="connectionState === 'connecting'" class="connection-status">
-        Conectando al servidor...
-      </div>
-      
-      <div v-if="connectionState === 'reconnecting'" class="connection-status">
-        Reintentando conexión...
-      </div>
-      
-      <div v-if="conversationCompleted" class="completion-status">
-        ✅ Conversación completada. El chat se cerrará automáticamente.
+        Connecting to server...
       </div>
     </div>
   </template>
@@ -51,6 +96,10 @@
       websocket_url: {
         type: String,
         required: true
+      },
+      disabled: {
+        type: Boolean,
+        default: false
       }
     },
     data() {
@@ -59,29 +108,49 @@
         userInput: '',
         messages: [],
         conversationCompleted: false,
-        connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected', 'reconnecting'
-        reconnectAttempts: 0,
-        maxReconnectAttempts: 3
+        connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected'
+        currentAnswerType: null,
+        currentOptions: [],
+        selectedSingleChoice: null,
+        selectedMultipleChoices: []
       }
     },
     computed: {
       canSendMessage() {
-        return this.connectionState === 'connected' && !this.conversationCompleted;
+        return this.connectionState === 'connected' && !this.conversationCompleted && !this.disabled;
       },
       inputPlaceholder() {
-        return this.conversationCompleted 
-          ? 'La conversación ha finalizado' 
-          : 'Escribe tu respuesta...';
+        if (this.disabled || this.conversationCompleted) {
+          return 'The conversation has ended';
+        }
+        return 'Type your response...';
       },
       buttonText() {
-        if (this.conversationCompleted) return 'Finalizado';
-        if (this.connectionState === 'connected') return 'Enviar';
-        return 'Conectando...';
+        if (this.disabled || this.conversationCompleted) return 'Ended';
+        if (this.connectionState === 'connected') return 'Send';
+        return 'Connecting...';
+      },
+      hasValidSelection() {
+        if (this.currentAnswerType === 'single_choice') {
+          return !!this.selectedSingleChoice;
+        }
+        if (this.currentAnswerType === 'multiple_choice') {
+          return this.selectedMultipleChoices.length > 0;
+        }
+        return false;
+      },
+      selectionCount() {
+        return this.selectedMultipleChoices.length;
       }
     },
     mounted() {
-      console.log(`🚀 ChatWidget montado`);
-      this.connectWebSocket();
+      console.log(`🚀 ChatWidget mounted for chat-ui URL: ${this.websocket_url}`);
+      if (this.websocket_url) {
+        this.connectWebSocket();
+      } else {
+        console.error('❌ No WebSocket URL provided');
+        this.$emit('connection-state-change', 'error');
+      }
     },
     beforeUnmount() {
       this.disconnectWebSocket();
@@ -89,20 +158,27 @@
     methods: {
       connectWebSocket() {
         if (!this.websocket_url) {
-          this.addMessage('system', 'Error: URL de WebSocket no proporcionada');
+          this.addMessage('system', 'Error: WebSocket URL not provided');
+          this.$emit('connection-state-change', 'error');
           return;
         }
 
         this.connectionState = 'connecting';
-        console.log(`🔗 Conectando a WebSocket:`, this.websocket_url);
+        console.log(`🔗 Connecting to WebSocket from chat-ui:`, this.websocket_url);
+        this.$emit('connection-state-change', 'connecting');
         
         try {
+          if (this.ws) {
+            console.log('🔄 Closing existing connection before creating new one');
+            this.ws.close();
+          }
+          
           this.ws = new WebSocket(this.websocket_url);
           
           this.ws.onopen = () => {
-            console.log('✅ Conectado al agente');
+            console.log('✅ Connected to agent from chat-ui');
             this.connectionState = 'connected';
-            this.reconnectAttempts = 0;
+            this.$emit('connection-state-change', 'connected');
           };
           
           this.ws.onmessage = (event) => {
@@ -115,61 +191,67 @@
           };
           
           this.ws.onclose = (event) => {
-            console.log('🔌 WebSocket desconectado, código:', event.code);
+            console.log('🔌 WebSocket disconnected, code:', event.code);
             this.connectionState = 'disconnected';
-            
-            // Códigos que NO deben reconectar (errores permanentes)
-            if ([4001, 4004, 403, 401].includes(event.code)) {
-              this.addMessage('system', 'Conexión cerrada por el servidor');
-              return;
-            }
-            
-            // Reconexión automática si la conversación no terminó
-            if (!this.conversationCompleted && this.reconnectAttempts < this.maxReconnectAttempts) {
-              this.attemptReconnect();
-            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-              this.addMessage('system', 'No se pudo restablecer la conexión');
-            }
+            this.$emit('connection-state-change', 'disconnected');
+            this.addMessage('system', 'Connection closed');
           };
           
           this.ws.onerror = (error) => {
-            console.error('❌ Error de WebSocket:', error);
+            console.error('❌ WebSocket error:', error);
             this.connectionState = 'disconnected';
+            this.$emit('connection-state-change', 'disconnected');
+            this.addMessage('system', 'Connection error');
           };
           
         } catch (error) {
-          console.error('❌ Error al conectar WebSocket:', error);
+          console.error('❌ Error connecting to WebSocket:', error);
           this.connectionState = 'disconnected';
-          this.addMessage('system', `Error al conectar: ${error.message}`);
+          this.$emit('connection-state-change', 'error');
+          this.addMessage('system', `Connection error: ${error.message}`);
         }
       },
       
-      attemptReconnect() {
-        this.reconnectAttempts++;
-        this.connectionState = 'reconnecting';
-        
-        const delay = Math.min(2000 * this.reconnectAttempts, 8000); // Delay progresivo
-        console.log(`🔄 Reintentando conexión en ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        
-        setTimeout(() => {
-          this.connectWebSocket();
-        }, delay);
-      },
-      
       handleWebSocketMessage(data) {
+        console.log('📨 ChatWidget received message:', data.type, data);
+        
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
-          this.addMessage('agent', data.content);
+          const isWelcome = data.data?.is_welcome;
+          const isCurrentState = data.data?.is_current_state;
+          const answerType = data.data?.answerType;
+          const options = data.data?.options;
+          
+          // Solo agregar mensaje si no es un estado actual (para evitar duplicados)
+          if (!isCurrentState) {
+            this.addMessage('agent', data.content);
+          }
+          
+          // Actualizar el tipo de respuesta y opciones actuales
+          this.currentAnswerType = answerType;
+          this.currentOptions = options || [];
+          
+          // Limpiar selecciones anteriores
+          this.selectedSingleChoice = null;
+          this.selectedMultipleChoices = [];
           
           if (isComplete) {
             this.conversationCompleted = true;
-            console.log('🔒 Conversación completada en chat-ui');
+            console.log('🔒 Conversation completed in chat-ui');
             this.$emit('conversation-complete', data.data.summary);
+            
+            // Cerrar automáticamente el widget después de 3 segundos
+            setTimeout(() => {
+              this.$emit('close-widget');
+            }, 3000);
           }
-        } else if (data.type === 'system') {
-          this.addMessage('system', data.content);
+        } else if (data.type === 'user_message') {
+          this.addMessage('user', data.content);
+        } else if (data.type === 'ui_config') {
+          console.log('🔧 ChatWidget received ui_config:', data);
+          this.$emit('ui-config', data);
         } else if (data.type === 'error') {
-          console.error('❌ Error del servidor:', data.content);
+          console.error('❌ Server error:', data.content);
           this.addMessage('system', `Error: ${data.content}`);
         }
       },
@@ -183,8 +265,8 @@
       },
       
       handleSendMessage() {
-        if (this.conversationCompleted) {
-          this.addMessage('system', 'La conversación ha finalizado. No se pueden enviar más mensajes.');
+        if (this.disabled || this.conversationCompleted) {
+          this.addMessage('system', 'The conversation has ended. No more messages can be sent.');
           this.userInput = '';
           return;
         }
@@ -198,8 +280,7 @@
           this.ws.send(JSON.stringify({ content: message }));
           this.$emit('message-sent', message);
         } else {
-          this.addMessage('system', 'No hay conexión. Reintentando...');
-          this.attemptReconnect();
+          this.addMessage('system', 'No connection available');
         }
         
         this.userInput = '';
@@ -222,6 +303,36 @@
         if (container) {
           container.scrollTop = container.scrollHeight;
         }
+      },
+      
+      selectSingleChoice(option) {
+        this.selectedSingleChoice = option;
+      },
+      
+      sendSelection() {
+        let content = '';
+        
+        if (this.currentAnswerType === 'single_choice' && this.selectedSingleChoice) {
+          content = this.selectedSingleChoice;
+        } else if (this.currentAnswerType === 'multiple_choice' && this.selectedMultipleChoices.length > 0) {
+          content = this.selectedMultipleChoices.join(', ');
+        }
+        
+        if (content) {
+          this.addMessage('user', content);
+          
+          // Enviar al WebSocket
+          if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ content }));
+            this.$emit('message-sent', content);
+          }
+          
+          // Limpiar estado
+          this.selectedSingleChoice = null;
+          this.selectedMultipleChoices = [];
+          this.currentAnswerType = null;
+          this.currentOptions = [];
+        }
       }
     }
   }
@@ -238,189 +349,207 @@
   }
   
   .messages-area {
-    height: 450px;
+    height: calc(100vh - 180px);
     overflow-y: auto;
-    border: 2px solid #e0e7ff;
-    border-radius: 15px;
     padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
     margin-bottom: 20px;
-    background: linear-gradient(135deg, #fafbff 0%, #f0f4ff 100%);
   }
   
   .message {
-    margin: 15px 0;
-    padding: 15px 18px;
-    border-radius: 18px;
+    margin-bottom: 15px;
+    padding: 12px 16px;
+    border-radius: 12px;
     max-width: 85%;
     word-wrap: break-word;
-    color: #2d3748;
-    font-size: 15px;
-    line-height: 1.5;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    animation: fadeInUp 0.3s ease-out;
   }
   
   .message.user {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #007bff;
     color: white;
     margin-left: auto;
-    text-align: right;
-    border-bottom-right-radius: 6px;
   }
   
   .message.agent {
-    background: linear-gradient(135deg, #f1f8e9 0%, #e8f5e8 100%);
+    background: #e9ecef;
+    color: #212529;
     margin-right: auto;
-    border-bottom-left-radius: 6px;
-    border-left: 4px solid #4caf50;
   }
   
   .message.system {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    background: #dc3545;
+    color: white;
     margin: 10px auto;
     text-align: center;
-    border-radius: 12px;
-    color: #856404;
-    font-style: italic;
     max-width: 95%;
-    border: 1px solid #ffc107;
   }
   
   .input-container {
     display: flex;
-    gap: 15px;
-    align-items: flex-end;
-    padding: 15px;
-    background: rgba(0, 0, 0, 0.02);
-    border-radius: 15px;
+    gap: 10px;
+    position: relative;
   }
   
-  #user-input {
+  textarea {
     flex: 1;
-    min-height: 60px;
-    padding: 15px 18px;
-    border: 2px solid #e0e7ff;
+    padding: 12px;
+    border: 2px solid #dee2e6;
     border-radius: 12px;
-    resize: vertical;
+    resize: none;
+    height: 60px;
     font-family: inherit;
-    font-size: 15px;
-    background: white;
-    transition: all 0.3s ease;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
   }
   
-  #user-input:focus {
+  textarea:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #007bff;
+  }
+  
+  textarea:disabled {
+    background: #e9ecef;
+    cursor: not-allowed;
   }
   
   .send-button {
-    padding: 15px 25px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 0 25px;
+    background: #007bff;
     color: white;
     border: none;
     border-radius: 12px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 15px;
     transition: all 0.3s ease;
-    min-width: 100px;
   }
   
   .send-button:hover:not(:disabled) {
+    background: #0056b3;
     transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
   }
   
   .send-button:disabled {
-    background: #cbd5e0;
+    background: #6c757d;
     cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
-  
-  .connection-status, .completion-status {
-    text-align: center;
-    padding: 12px 20px;
-    border-radius: 10px;
-    margin-top: 15px;
-    font-weight: 600;
-    font-size: 14px;
   }
   
   .connection-status {
-    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-    border: 1px solid #ffc107;
-    color: #856404;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    z-index: 1000;
   }
   
-  .completion-status {
-    background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
-    border: 1px solid #17a2b8;
-    color: #0c5460;
+  .options-container {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #dee2e6;
   }
   
-  .messages-area::-webkit-scrollbar {
-    width: 8px;
+  .single-choice-container,
+  .multiple-choice-container {
+    margin-bottom: 10px;
   }
   
-  .messages-area::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
+  .options-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #495057;
+    font-size: 14px;
   }
   
-  .messages-area::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 4px;
+  .options-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
   }
   
-  .messages-area::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  .options-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 15px;
   }
   
-  @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .option-button {
+    padding: 10px 16px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+    color: #495057;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    min-width: 80px;
   }
   
-  /* Responsive design */
-  @media (max-width: 768px) {
-    .chat-container {
-      padding: 15px;
-    }
-    
-    .messages-area {
-      height: 350px;
-      padding: 15px;
-    }
-    
-    .message {
-      max-width: 95%;
-      padding: 12px 15px;
-      font-size: 14px;
-    }
-    
-    .input-container {
-      padding: 10px;
-      gap: 10px;
-    }
-    
-    #user-input {
-      min-height: 50px;
-      padding: 12px 15px;
-      font-size: 14px;
-    }
-    
-    .send-button {
-      padding: 12px 20px;
-      min-width: 80px;
-      font-size: 14px;
-    }
+  .option-button:hover {
+    border-color: #007bff;
+    background: #f8f9fa;
+  }
+  
+  .option-button.selected {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+  }
+  
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .checkbox-label:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+  }
+  
+  .checkbox-input {
+    margin-right: 8px;
+    transform: scale(1.2);
+  }
+  
+  .checkbox-text {
+    font-size: 14px;
+    color: #495057;
+  }
+  
+  .send-selection-button {
+    padding: 10px 20px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s ease;
+  }
+  
+  .send-selection-button:hover:not(:disabled) {
+    background: #0056b3;
+    transform: translateY(-1px);
+  }
+  
+  .send-selection-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
   }
   </style> 

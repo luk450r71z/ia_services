@@ -86,14 +86,6 @@
       <div v-if="connectionState === 'connecting'" class="connection-status">
         Connecting to server...
       </div>
-      
-      <div v-if="connectionState === 'reconnecting'" class="connection-status">
-        Retrying connection...
-      </div>
-      
-      <div v-if="conversationCompleted" class="completion-status">
-        ✅ Conversation completed. The chat will close automatically.
-      </div>
     </div>
   </template>
   
@@ -115,10 +107,7 @@
         ws: null,
         userInput: '',
         messages: [],
-        conversationCompleted: false,
-        connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected', 'reconnecting'
-        reconnectAttempts: 0,
-        maxReconnectAttempts: 3,
+        connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected'
         currentAnswerType: null,
         currentOptions: [],
         selectedSingleChoice: null,
@@ -127,16 +116,16 @@
     },
     computed: {
       canSendMessage() {
-        return this.connectionState === 'connected' && !this.conversationCompleted && !this.disabled;
+        return this.connectionState === 'connected' && !this.disabled;
       },
       inputPlaceholder() {
-        if (this.disabled || this.conversationCompleted) {
+        if (this.disabled) {
           return 'The conversation has ended';
         }
         return 'Type your response...';
       },
       buttonText() {
-        if (this.disabled || this.conversationCompleted) return 'Ended';
+        if (this.disabled) return 'Ended';
         if (this.connectionState === 'connected') return 'Send';
         return 'Connecting...';
       },
@@ -155,7 +144,12 @@
     },
     mounted() {
       console.log(`🚀 ChatWidget mounted for chat-ui URL: ${this.websocket_url}`);
-      this.connectWebSocket();
+      if (this.websocket_url) {
+        this.connectWebSocket();
+      } else {
+        console.error('❌ No WebSocket URL provided');
+        this.$emit('connection-state-change', 'error');
+      }
     },
     beforeUnmount() {
       this.disconnectWebSocket();
@@ -164,19 +158,26 @@
       connectWebSocket() {
         if (!this.websocket_url) {
           this.addMessage('system', 'Error: WebSocket URL not provided');
+          this.$emit('connection-state-change', 'error');
           return;
         }
 
         this.connectionState = 'connecting';
         console.log(`🔗 Connecting to WebSocket from chat-ui:`, this.websocket_url);
+        this.$emit('connection-state-change', 'connecting');
         
         try {
+          if (this.ws) {
+            console.log('🔄 Closing existing connection before creating new one');
+            this.ws.close();
+          }
+          
           this.ws = new WebSocket(this.websocket_url);
           
           this.ws.onopen = () => {
             console.log('✅ Connected to agent from chat-ui');
             this.connectionState = 'connected';
-            this.reconnectAttempts = 0;
+            this.$emit('connection-state-change', 'connected');
           };
           
           this.ws.onmessage = (event) => {
@@ -191,43 +192,23 @@
           this.ws.onclose = (event) => {
             console.log('🔌 WebSocket disconnected, code:', event.code);
             this.connectionState = 'disconnected';
-            
-            // Codes that should NOT reconnect (permanent errors)
-            if ([4001, 4004, 403, 401].includes(event.code)) {
-              this.addMessage('system', 'Connection closed by server');
-              return;
-            }
-            
-            // Automatic reconnection if conversation hasn't ended
-            if (!this.conversationCompleted && this.reconnectAttempts < this.maxReconnectAttempts) {
-              this.attemptReconnect();
-            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-              this.addMessage('system', 'Could not restore connection');
-            }
+            this.$emit('connection-state-change', 'disconnected');
+            this.addMessage('system', 'Connection closed');
           };
           
           this.ws.onerror = (error) => {
             console.error('❌ WebSocket error:', error);
             this.connectionState = 'disconnected';
+            this.$emit('connection-state-change', 'disconnected');
+            this.addMessage('system', 'Connection error');
           };
           
         } catch (error) {
           console.error('❌ Error connecting to WebSocket:', error);
           this.connectionState = 'disconnected';
+          this.$emit('connection-state-change', 'error');
           this.addMessage('system', `Connection error: ${error.message}`);
         }
-      },
-      
-      attemptReconnect() {
-        this.reconnectAttempts++;
-        this.connectionState = 'reconnecting';
-        
-        const delay = Math.min(2000 * this.reconnectAttempts, 8000); // Progressive delay
-        console.log(`🔄 Retrying connection in ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        
-        setTimeout(() => {
-          this.connectWebSocket();
-        }, delay);
       },
       
       handleWebSocketMessage(data) {
@@ -254,9 +235,13 @@
           this.selectedMultipleChoices = [];
           
           if (isComplete) {
-            this.conversationCompleted = true;
             console.log('🔒 Conversation completed in chat-ui');
             this.$emit('conversation-complete', data.data.summary);
+            
+            // Cerrar automáticamente el widget después de 3 segundos
+            setTimeout(() => {
+              this.$emit('close-widget');
+            }, 3000);
           }
         } else if (data.type === 'user_message') {
           this.addMessage('user', data.content);
@@ -278,7 +263,7 @@
       },
       
       handleSendMessage() {
-        if (this.disabled || this.conversationCompleted) {
+        if (this.disabled) {
           this.addMessage('system', 'The conversation has ended. No more messages can be sent.');
           this.userInput = '';
           return;
@@ -293,8 +278,7 @@
           this.ws.send(JSON.stringify({ content: message }));
           this.$emit('message-sent', message);
         } else {
-          this.addMessage('system', 'No connection. Retrying...');
-          this.attemptReconnect();
+          this.addMessage('system', 'No connection available');
         }
         
         this.userInput = '';
@@ -454,19 +438,6 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 20px;
-    font-size: 14px;
-    z-index: 1000;
-  }
-  
-  .completion-status {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(40, 167, 69, 0.9);
     color: white;
     padding: 10px 20px;
     border-radius: 20px;
