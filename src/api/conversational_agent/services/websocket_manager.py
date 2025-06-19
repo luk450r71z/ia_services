@@ -72,7 +72,9 @@ class WebSocketManager:
                 result["response"],
                 {
                     "is_complete": result["is_complete"],
-                    "summary": result["summary"]
+                    "summary": result["summary"],
+                    "answerType": result.get("answerType"),
+                    "options": result.get("options")
                 }
             )
             
@@ -98,14 +100,31 @@ class WebSocketManager:
             
             # Solo inicializar agente y enviar mensaje de bienvenida si la sesión está en estado 'initiated'
             if session_data.get('status') == 'initiated':
-                welcome_message = await conversation_manager.initialize_conversation(id_session, session_data)
-                if welcome_message:
-                    await self.send_message(
-                        id_session,
-                        "agent_response", 
-                        welcome_message,
-                        {"is_welcome": True}
-                    )
+                welcome_result = await conversation_manager.initialize_conversation(id_session, session_data)
+                if welcome_result:
+                    # Manejar tanto el formato antiguo (string) como el nuevo (dict)
+                    if isinstance(welcome_result, dict):
+                        welcome_message = welcome_result.get("welcome_message", "")
+                        answerType = welcome_result.get("answerType")
+                        options = welcome_result.get("options")
+                        await self.send_message(
+                            id_session,
+                            "agent_response", 
+                            welcome_message,
+                            {
+                                "is_welcome": True,
+                                "answerType": answerType,
+                                "options": options
+                            }
+                        )
+                    else:
+                        # Formato antiguo - solo string
+                        await self.send_message(
+                            id_session,
+                            "agent_response", 
+                            welcome_result,
+                            {"is_welcome": True}
+                        )
                 else:
                     logger.warning(f"⚠️ No se pudo inicializar agente para sesión: {id_session}")
             else:
@@ -128,6 +147,34 @@ class WebSocketManager:
                                     "user_message",
                                     message.content
                                 )
+                    
+                    # Enviar el estado actual con answerType y options si la conversación no está completa
+                    if not agent.is_conversation_complete():
+                        # Obtener answerType y options de la pregunta actual
+                        answerType = None
+                        options = None
+                        if hasattr(agent, 'state') and hasattr(agent.state, 'current_question_index'):
+                            # Obtener datos de sesión para acceder al contenido original
+                            if session_data and session_data.get('content'):
+                                questions = session_data['content'].get('questions', [])
+                                current_index = agent.state.current_question_index
+                                if current_index < len(questions):
+                                    current_question = questions[current_index]
+                                    answerType = current_question.get("answerType")
+                                    options = current_question.get("options")
+                        
+                        # Si hay opciones actuales, enviar un mensaje de estado actual
+                        if answerType and options:
+                            await self.send_message(
+                                id_session,
+                                "agent_response",
+                                "Please continue with your selection:",
+                                {
+                                    "is_current_state": True,
+                                    "answerType": answerType,
+                                    "options": options
+                                }
+                            )
                 
         except Exception as e:
             logger.error(f"❌ Error en inicialización: {str(e)}")

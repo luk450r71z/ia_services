@@ -13,7 +13,60 @@
         </div>
       </div>
       
-      <div class="input-container">
+      <!-- Controles dinámicos según answerType -->
+      <div v-if="currentAnswerType && currentOptions && currentOptions.length > 0" class="options-container">
+        <!-- Single Choice - Botones -->
+        <div v-if="currentAnswerType === 'single_choice'" class="single-choice-container">
+          <div class="options-title">Select one option:</div>
+          <div class="options-buttons">
+            <button 
+              v-for="option in currentOptions" 
+              :key="option"
+              @click="selectSingleChoice(option)"
+              :class="['option-button', { 'selected': selectedSingleChoice === option }]"
+            >
+              {{ option }}
+            </button>
+          </div>
+          <button 
+            @click="sendSelection"
+            :disabled="!hasValidSelection"
+            class="send-selection-button"
+          >
+            Send Selection
+          </button>
+        </div>
+        
+        <!-- Multiple Choice - Checkboxes -->
+        <div v-else-if="currentAnswerType === 'multiple_choice'" class="multiple-choice-container">
+          <div class="options-title">Select one or more options:</div>
+          <div class="options-checkboxes">
+            <label 
+              v-for="option in currentOptions" 
+              :key="option"
+              class="checkbox-label"
+            >
+              <input 
+                type="checkbox" 
+                :value="option"
+                v-model="selectedMultipleChoices"
+                class="checkbox-input"
+              >
+              <span class="checkbox-text">{{ option }}</span>
+            </label>
+          </div>
+          <button 
+            @click="sendSelection"
+            :disabled="!hasValidSelection"
+            class="send-selection-button"
+          >
+            Send Selection ({{ selectionCount }})
+          </button>
+        </div>
+      </div>
+      
+      <!-- Input de texto normal -->
+      <div v-else class="input-container">
         <textarea 
           id="user-input" 
           v-model="userInput"
@@ -65,7 +118,11 @@
         conversationCompleted: false,
         connectionState: 'disconnected', // 'disconnected', 'connecting', 'connected', 'reconnecting'
         reconnectAttempts: 0,
-        maxReconnectAttempts: 3
+        maxReconnectAttempts: 3,
+        currentAnswerType: null,
+        currentOptions: [],
+        selectedSingleChoice: null,
+        selectedMultipleChoices: []
       }
     },
     computed: {
@@ -82,6 +139,18 @@
         if (this.disabled || this.conversationCompleted) return 'Ended';
         if (this.connectionState === 'connected') return 'Send';
         return 'Connecting...';
+      },
+      hasValidSelection() {
+        if (this.currentAnswerType === 'single_choice') {
+          return !!this.selectedSingleChoice;
+        }
+        if (this.currentAnswerType === 'multiple_choice') {
+          return this.selectedMultipleChoices.length > 0;
+        }
+        return false;
+      },
+      selectionCount() {
+        return this.selectedMultipleChoices.length;
       }
     },
     mounted() {
@@ -167,8 +236,22 @@
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
           const isWelcome = data.data?.is_welcome;
+          const isCurrentState = data.data?.is_current_state;
+          const answerType = data.data?.answerType;
+          const options = data.data?.options;
           
-          this.addMessage('agent', data.content);
+          // Solo agregar mensaje si no es un estado actual (para evitar duplicados)
+          if (!isCurrentState) {
+            this.addMessage('agent', data.content);
+          }
+          
+          // Actualizar el tipo de respuesta y opciones actuales
+          this.currentAnswerType = answerType;
+          this.currentOptions = options || [];
+          
+          // Limpiar selecciones anteriores
+          this.selectedSingleChoice = null;
+          this.selectedMultipleChoices = [];
           
           if (isComplete) {
             this.conversationCompleted = true;
@@ -233,6 +316,36 @@
         const container = this.$refs.messagesContainer;
         if (container) {
           container.scrollTop = container.scrollHeight;
+        }
+      },
+      
+      selectSingleChoice(option) {
+        this.selectedSingleChoice = option;
+      },
+      
+      sendSelection() {
+        let content = '';
+        
+        if (this.currentAnswerType === 'single_choice' && this.selectedSingleChoice) {
+          content = this.selectedSingleChoice;
+        } else if (this.currentAnswerType === 'multiple_choice' && this.selectedMultipleChoices.length > 0) {
+          content = this.selectedMultipleChoices.join(', ');
+        }
+        
+        if (content) {
+          this.addMessage('user', content);
+          
+          // Enviar al WebSocket
+          if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ content }));
+            this.$emit('message-sent', content);
+          }
+          
+          // Limpiar estado
+          this.selectedSingleChoice = null;
+          this.selectedMultipleChoices = [];
+          this.currentAnswerType = null;
+          this.currentOptions = [];
         }
       }
     }
@@ -359,5 +472,111 @@
     border-radius: 20px;
     font-size: 14px;
     z-index: 1000;
+  }
+  
+  .options-container {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #dee2e6;
+  }
+  
+  .single-choice-container,
+  .multiple-choice-container {
+    margin-bottom: 10px;
+  }
+  
+  .options-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #495057;
+    font-size: 14px;
+  }
+  
+  .options-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 15px;
+  }
+  
+  .options-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 15px;
+  }
+  
+  .option-button {
+    padding: 10px 16px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+    color: #495057;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    min-width: 80px;
+  }
+  
+  .option-button:hover {
+    border-color: #007bff;
+    background: #f8f9fa;
+  }
+  
+  .option-button.selected {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+  }
+  
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .checkbox-label:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+  }
+  
+  .checkbox-input {
+    margin-right: 8px;
+    transform: scale(1.2);
+  }
+  
+  .checkbox-text {
+    font-size: 14px;
+    color: #495057;
+  }
+  
+  .send-selection-button {
+    padding: 10px 20px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s ease;
+  }
+  
+  .send-selection-button:hover:not(:disabled) {
+    background: #0056b3;
+    transform: translateY(-1px);
+  }
+  
+  .send-selection-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
   }
   </style> 
