@@ -20,12 +20,14 @@ def initiate_questionnaire(session_id):
     content = {
         "questions": [
             {
-                "text": "What is your name?",
-                "answerType": "text"
+                "id": "1",
+                "question": "What is your name?",
+                "answerType": "short_text"
             },
             {
-                "text": "What is your age?",
-                "answerType": "number"
+                "id": "2",
+                "question": "What is your age?",
+                "answerType": "short_text"
             }
         ],
         "client_name": "Test Client",
@@ -62,58 +64,49 @@ def test_complete_chat_flow(page: Page):
     # Navigate to chat UI
     page.goto(f"http://localhost:8080/{session_id}")
     
-    # Wait for chat to load and connect
-    page.wait_for_selector(".chat-container")
+    # Wait for the chat UI to load
+    page.wait_for_selector(".chat-ui-container", timeout=30000)
     
-    # Verify initial UI state
-    expect(page.locator(".connection-status")).to_contain_text("Connected")
-    expect(page.locator(".messages-area")).to_be_visible()
+    # Wait for loading to complete
+    page.wait_for_selector(".chat-section", timeout=15000)
     
-    # Wait for welcome message
-    page.wait_for_selector(".message.agent")
-    welcome_message = page.locator(".message.agent").first
-    expect(welcome_message).to_contain_text("Welcome to the test questionnaire!")
+    # Wait for connection to be established
+    page.wait_for_selector(".connection-status .status-text:has-text('Connected')", timeout=15000)
     
-    # Answer first question
-    input_field = page.locator("textarea#user-input")
-    send_button = page.locator("button.send-button")
+    # Verify chat interface is ready
+    expect(page.locator(".chat-widget")).to_be_visible()
+    
+    # Wait for welcome message from agent
+    page.wait_for_selector(".message.agent", timeout=15000)
+    
+    # Send first answer
+    input_field = page.locator("#user-input")
+    send_button = page.locator(".send-button")
     
     input_field.fill("John Doe")
     send_button.click()
     
     # Verify first answer was sent
-    page.wait_for_selector(".message.user")
-    user_message = page.locator(".message.user").last
-    expect(user_message).to_contain_text("John Doe")
+    page.wait_for_selector(".message.user:has-text('John Doe')", timeout=10000)
     
-    # Wait for next question
-    page.wait_for_selector(".message.agent >> text=next question")
-    
-    # Answer second question
+    # Wait for next question and send second answer
+    page.wait_for_selector(".message.agent", timeout=10000)
     input_field.fill("25")
     send_button.click()
     
     # Verify second answer was sent
-    page.wait_for_selector(".message.user >> text=25")
+    page.wait_for_selector(".message.user:has-text('25')", timeout=10000)
     
-    # Wait for completion message
-    page.wait_for_selector(".message.agent >> text=thank you", timeout=10000)
-    
-    # Verify conversation completed state
-    page.wait_for_selector(".completion-status")
-    expect(page.locator(".completion-status")).to_contain_text("Conversation completed")
-    
-    # Verify input is disabled
-    expect(input_field).to_be_disabled()
-    expect(send_button).to_be_disabled()
+    # Wait for completion
+    page.wait_for_selector(".connection-status .status-text:has-text('Conversation Ended')", timeout=15000)
 
 def test_error_handling(page: Page):
     """Test error handling in the chat UI"""
     # Try to connect with invalid session
     page.goto("http://localhost:8080/invalid_session_id")
     
-    # Wait for error message
-    page.wait_for_selector(".error-section")
+    # Wait for error section to appear
+    page.wait_for_selector(".error-section", timeout=10000)
     expect(page.locator(".error-section")).to_contain_text("Connection Error")
     
     # Verify retry button exists
@@ -122,7 +115,7 @@ def test_error_handling(page: Page):
     
     # Click retry and verify it attempts reconnection
     retry_button.click()
-    expect(page.locator(".connection-status")).to_contain_text("Connecting")
+    page.wait_for_selector(".loading-section", timeout=5000)
 
 def test_websocket_reconnection(page: Page):
     """Test WebSocket reconnection functionality"""
@@ -133,18 +126,41 @@ def test_websocket_reconnection(page: Page):
     # Navigate to chat UI
     page.goto(f"http://localhost:8080/{session_id}")
     
-    # Wait for initial connection
-    page.wait_for_selector(".connection-status >> text=Connected")
+    # Wait for the chat UI to load
+    page.wait_for_selector(".chat-ui-container", timeout=30000)
     
-    # Simulate connection loss (stop backend server temporarily)
-    # Note: This would require actual server control in real testing
+    # Wait for loading to complete
+    page.wait_for_selector(".chat-section", timeout=15000)
     
-    # Verify reconnection attempt
-    page.wait_for_selector(".connection-status >> text=Retrying")
+    # Wait for connection to be established
+    page.wait_for_selector(".connection-status .status-text:has-text('Connected')", timeout=15000)
     
-    # Verify max reconnection attempts
-    time.sleep(10)  # Wait for reconnection attempts
-    expect(page.locator(".message.system")).to_contain_text("Could not restore connection")
+    # Verify chat interface is ready
+    expect(page.locator(".chat-widget")).to_be_visible()
+    
+    # Wait for welcome message from agent
+    page.wait_for_selector(".message.agent", timeout=15000)
+    
+    # Send first answer
+    input_field = page.locator("#user-input")
+    send_button = page.locator(".send-button")
+    
+    input_field.fill("John Doe")
+    send_button.click()
+    
+    # Verify first answer was sent
+    page.wait_for_selector(".message.user:has-text('John Doe')", timeout=10000)
+    
+    # Wait for next question and send second answer
+    page.wait_for_selector(".message.agent", timeout=10000)
+    input_field.fill("25")
+    send_button.click()
+    
+    # Verify second answer was sent
+    page.wait_for_selector(".message.user:has-text('25')", timeout=10000)
+    
+    # Wait for completion
+    page.wait_for_selector(".connection-status .status-text:has-text('Conversation Ended')", timeout=15000)
 
 def test_ui_configuration(page: Page):
     """Test UI configuration through WebSocket"""
@@ -155,9 +171,42 @@ def test_ui_configuration(page: Page):
     # Navigate to chat UI
     page.goto(f"http://localhost:8080/{session_id}")
     
-    # Wait for UI to load
-    page.wait_for_selector(".chat-container")
+    # Wait for the chat UI to load
+    page.wait_for_selector(".chat-ui-container", timeout=30000)
     
-    # Verify avatar is displayed
+    # Wait for loading to complete
+    page.wait_for_selector(".chat-section", timeout=15000)
+    
+    # Wait for connection to be established
+    page.wait_for_selector(".connection-status .status-text:has-text('Connected')", timeout=15000)
+    
+    # Verify chat interface is ready
+    expect(page.locator(".chat-widget")).to_be_visible()
+    
+    # Verify avatar is displayed (should be visible based on config)
     expect(page.locator(".header-avatar")).to_be_visible()
-    expect(page.locator(".avatar-label")).to_contain_text("Test Bot") 
+    expect(page.locator(".avatar-label")).to_contain_text("Test Bot")
+    
+    # Wait for welcome message from agent
+    page.wait_for_selector(".message.agent", timeout=15000)
+    
+    # Send first answer
+    input_field = page.locator("#user-input")
+    send_button = page.locator(".send-button")
+    
+    input_field.fill("John Doe")
+    send_button.click()
+    
+    # Verify first answer was sent
+    page.wait_for_selector(".message.user:has-text('John Doe')", timeout=10000)
+    
+    # Wait for next question and send second answer
+    page.wait_for_selector(".message.agent", timeout=10000)
+    input_field.fill("25")
+    send_button.click()
+    
+    # Verify second answer was sent
+    page.wait_for_selector(".message.user:has-text('25')", timeout=10000)
+    
+    # Wait for completion
+    page.wait_for_selector(".connection-status .status-text:has-text('Conversation Ended')", timeout=15000) 

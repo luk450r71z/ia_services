@@ -10,12 +10,12 @@ import json
 from datetime import datetime, timedelta
 
 # Add src directory to Python path
-src_path = Path(__file__).parent.parent.parent
+src_path = Path(__file__).parent.parent
 sys.path.append(str(src_path))
 
-from api.main import app
-from api.auth.db.sqlite_db import init_db, get_db
-from api.auth.db.database import USERS
+from main import app
+from auth.db.sqlite_db import init_db, get_db
+from auth.db.database import USERS
 
 # Test database path
 TEST_DB_PATH = Path("envs/data/test_sessions.db")
@@ -40,8 +40,8 @@ def test_db():
 @pytest.fixture
 def test_client(test_db):
     """Create a test client using the test database"""
-    with TestClient(app) as client:
-        yield client
+    client = TestClient(app)
+    return client
 
 @pytest.fixture
 def auth_headers():
@@ -63,12 +63,14 @@ def valid_questionnaire_content():
     return {
         "questions": [
             {
-                "text": "What is your name?",
-                "answerType": "text"
+                "id": "q1",
+                "question": "What is your name?",
+                "answerType": "short_text"
             },
             {
-                "text": "What is your age?",
-                "answerType": "number"
+                "id": "q2",
+                "question": "What is your age?",
+                "answerType": "short_text"
             }
         ],
         "client_name": "Test Client",

@@ -87,7 +87,7 @@ class SessionService:
         Retorna la sesión actualizada o lanza una excepción si hay algún error."""
         session = get_session_db(id_session)
         if not session:
-            raise ValueError("Sesión no encontrada")
+            raise ValueError("Session not found")
         
         # Verificar tiempo de expiración y marcar como expired si es necesario
         if not SessionService._validate_session_expiration(session):
@@ -98,18 +98,18 @@ class SessionService:
                 content=session.get('content', {}),
                 configs=session.get('configs', {})
             )
-            raise ValueError(f"Sesión expirada. Máximo 5 minutos desde la creación")
+            raise ValueError(f"Session expired. Maximum 5 minutes from creation")
         
         # Validar estados no permitidos
         estados_no_permitidos = ['started', 'ended', 'initiated']
         if session['status'] in estados_no_permitidos:
-            raise ValueError(f"No se puede reiniciar una sesión que ya está en estado '{session['status']}'")
+            raise ValueError(f"Cannot restart a session that is already in '{session['status']}' status")
         
         # Validar tipos de datos para nuevo contenido/configs
         if new_content is not None and not isinstance(new_content, dict):
-            raise ValueError("El contenido debe ser un diccionario")
+            raise ValueError("Content must be a dictionary")
         if new_configs is not None and not isinstance(new_configs, dict):
-            raise ValueError("Las configuraciones deben ser un diccionario")
+            raise ValueError("Configurations must be a dictionary")
         
         # Usar el nuevo contenido si se proporciona, sino mantener el existente
         final_content = new_content if new_content is not None else session.get('content', {})
@@ -125,7 +125,7 @@ class SessionService:
         )
         
         if not updated_session:
-            raise Exception("Error al actualizar la sesión")
+            raise Exception("Error updating session")
             
         return updated_session
 
