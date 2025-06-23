@@ -136,11 +136,15 @@
         commentText: '',
         // Métricas de comportamiento del usuario
         userMetrics: {
-          mouseOutsideCount: 0,
-          mouseInsideCount: 0,
-          appHiddenCount: 0,
-          appVisibleCount: 0,
-          sessionStartTime: Date.now()
+          appHiddenTime: 0,           // Tiempo total con app oculta (ms)
+          appVisibleTime: 0,          // Tiempo total con app visible (ms)
+          sessionStartTime: Date.now(),
+          // Contadores de operaciones
+          copyCount: 0,               // Número de veces que copió (Ctrl+C)
+          pasteCount: 0,              // Número de veces que pegó (Ctrl+V)
+          // Timers para tracking de tiempo
+          appHiddenStartTime: null,
+          appVisibleStartTime: Date.now() // Inicializar como visible
         }
       }
     },
@@ -387,13 +391,24 @@
       // Helper para generar métricas del usuario
       generateUserMetrics() {
         const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
+        
+        // Calcular tiempo actual si hay timers activos
+        let currentAppVisibleTime = this.userMetrics.appVisibleTime;
+        let currentAppHiddenTime = this.userMetrics.appHiddenTime;
+        
+        if (this.userMetrics.appVisibleStartTime) {
+          currentAppVisibleTime += Date.now() - this.userMetrics.appVisibleStartTime;
+        }
+        if (this.userMetrics.appHiddenStartTime) {
+          currentAppHiddenTime += Date.now() - this.userMetrics.appHiddenStartTime;
+        }
+        
         return {
-          mouseOutsideCount: this.userMetrics.mouseOutsideCount,
-          mouseInsideCount: this.userMetrics.mouseInsideCount,
-          appHiddenCount: this.userMetrics.appHiddenCount,
-          appVisibleCount: this.userMetrics.appVisibleCount,
-          sessionDurationMs: sessionDuration,
-          sessionDurationSeconds: Math.round(sessionDuration / 1000)
+          appHiddenTime: currentAppHiddenTime,
+          appVisibleTime: currentAppVisibleTime,
+          sessionDuration: sessionDuration,
+          copyCount: this.userMetrics.copyCount,
+          pasteCount: this.userMetrics.pasteCount
         };
       },
       
@@ -406,37 +421,80 @@
       },
 
       setupFocusDetection() {
-        // Detectar la posición del mouse en tiempo real
+        // Detectar la posición del mouse en toda la página
         document.addEventListener('mousemove', (event) => {
-          const chatContainer = this.$el;
-          if (chatContainer && !chatContainer.contains(event.target)) {
-            console.log('🔗 ChatWidget mouse outside:');
-            this.userMetrics.mouseOutsideCount++;
-            this.$emit('mouse-outside', {
-              x: event.clientX,
-              y: event.clientY,
-              target: event.target.tagName
-            });
-          } else if (chatContainer && chatContainer.contains(event.target)) {
-            console.log('🔗 ChatWidget mouse inside:');
-            this.userMetrics.mouseInsideCount++;
+          // Obtener dimensiones de la ventana
+          const windowWidth = window.innerWidth;
+          const windowHeight = window.innerHeight;
+          
+          // Determinar si el mouse está dentro de la ventana
+          const isInsideWindow = event.clientX >= 0 && event.clientX <= windowWidth && 
+                                event.clientY >= 0 && event.clientY <= windowHeight;
+          
+          if (isInsideWindow) {
             this.$emit('mouse-inside', {
               x: event.clientX,
               y: event.clientY,
-              target: event.target.tagName
+              target: event.target.tagName,
+              windowWidth,
+              windowHeight
             });
           }
+        });
+        
+        // Detectar operaciones de copiar y pegar
+        document.addEventListener('keydown', (event) => {
+          if (event.ctrlKey || event.metaKey) { // Ctrl en Windows/Linux, Cmd en Mac
+            if (event.key === 'c') {
+              this.userMetrics.copyCount++;
+              console.log('📋 Copy detected (keyboard)');
+              this.$emit('copy-operation');
+            } else if (event.key === 'v') {
+              this.userMetrics.pasteCount++;
+              console.log('📋 Paste detected (keyboard)');
+              this.$emit('paste-operation');
+            }
+          }
+        });
+        
+        // Detectar operaciones de copiar y pegar mediante menú contextual
+        document.addEventListener('copy', (event) => {
+          this.userMetrics.copyCount++;
+          console.log('📋 Copy detected (context menu)');
+          this.$emit('copy-operation');
+        });
+        
+        document.addEventListener('paste', (event) => {
+          this.userMetrics.pasteCount++;
+          console.log('📋 Paste detected (context menu)');
+          this.$emit('paste-operation');
         });
         
         // Detectar cambios de pestaña y minimización
         document.addEventListener('visibilitychange', () => {
           if (document.hidden) {
+            // Si estaba visible y ahora está oculta, calcular tiempo visible
+            if (this.userMetrics.appVisibleStartTime) {
+              this.userMetrics.appVisibleTime += Date.now() - this.userMetrics.appVisibleStartTime;
+              this.userMetrics.appVisibleStartTime = null;
+            }
+            
+            // Empezar a trackear tiempo oculta
+            this.userMetrics.appHiddenStartTime = Date.now();
+            
             console.log('🔒 ChatWidget app hidden');
-            this.userMetrics.appHiddenCount++;
             this.$emit('app-hidden');
           } else {
+            // Si estaba oculta y ahora está visible, calcular tiempo oculta
+            if (this.userMetrics.appHiddenStartTime) {
+              this.userMetrics.appHiddenTime += Date.now() - this.userMetrics.appHiddenStartTime;
+              this.userMetrics.appHiddenStartTime = null;
+            }
+            
+            // Empezar a trackear tiempo visible
+            this.userMetrics.appVisibleStartTime = Date.now();
+            
             console.log('🔗 ChatWidget app visible');
-            this.userMetrics.appVisibleCount++;
             this.$emit('app-visible');
           }
         });
