@@ -55,23 +55,23 @@
               <span class="checkbox-text">{{ option }}</span>
             </label>
             
-            <!-- Opción "Other" con campo de texto -->
+            <!-- Opción "Comment" con campo de texto -->
             <label class="checkbox-label">
               <input 
                 type="checkbox" 
-                value="other"
+                value="comment"
                 v-model="selectedMultipleChoices"
                 class="checkbox-input"
               >
-              <span class="checkbox-text">Other:</span>
+              <span class="checkbox-text">Comment:</span>
             </label>
             
-            <!-- Campo de texto para "Other" -->
-            <div v-if="selectedMultipleChoices.includes('other')" class="other-input-container">
+            <!-- Campo de texto para "Comment" -->
+            <div v-if="selectedMultipleChoices.includes('comment')" class="comment-input-container">
               <textarea 
-                v-model="otherText"
+                v-model="commentText"
                 placeholder="Please specify..."
-                class="other-textarea"
+                class="comment-textarea"
                 rows="2"
               ></textarea>
             </div>
@@ -133,7 +133,7 @@
         currentOptions: [],
         selectedSingleChoice: null,
         selectedMultipleChoices: [],
-        otherText: '',
+        commentText: '',
         // Métricas de comportamiento del usuario
         userMetrics: {
           mouseOutsideCount: 0,
@@ -166,8 +166,8 @@
         if (this.currentAnswerType === 'multiple_choice') {
           // Verificar que haya al menos una selección válida
           const hasValidChoices = this.selectedMultipleChoices.some(choice => {
-            if (choice === 'other') {
-              return this.otherText.trim().length > 0;
+            if (choice === 'comment' && this.commentText.trim().length > 0) {
+              return true;
             }
             return true;
           });
@@ -267,7 +267,7 @@
           // Limpiar selecciones anteriores
           this.selectedSingleChoice = null;
           this.selectedMultipleChoices = [];
-          this.otherText = '';
+          this.commentText = '';
           
           if (isComplete) {
             console.log('🔒 Conversation completed in chat-ui');
@@ -310,21 +310,7 @@
         this.addMessage('user', message);
         
         if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-          // Calcular tiempo de sesión
-          const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
-          
-          // Crear objeto con mensaje y métricas
-          const messageWithMetrics = {
-            content: message,
-            metrics: {
-              mouseOutsideCount: this.userMetrics.mouseOutsideCount,
-              mouseInsideCount: this.userMetrics.mouseInsideCount,
-              appHiddenCount: this.userMetrics.appHiddenCount,
-              appVisibleCount: this.userMetrics.appVisibleCount,
-              sessionDurationMs: sessionDuration,
-              sessionDurationSeconds: Math.round(sessionDuration / 1000)
-            }
-          };
+          const messageWithMetrics = this.createMessageWithMetrics(message);
           
           this.ws.send(JSON.stringify(messageWithMetrics));
           this.$emit('message-sent', message);
@@ -365,13 +351,13 @@
         if (this.currentAnswerType === 'single_choice' && this.selectedSingleChoice) {
           content = this.selectedSingleChoice;
         } else if (this.currentAnswerType === 'multiple_choice' && this.selectedMultipleChoices.length > 0) {
-          // Procesar las opciones seleccionadas, incluyendo "other"
+          // Procesar las opciones seleccionadas, incluyendo "comment"
           const selections = this.selectedMultipleChoices.map(choice => {
-            if (choice === 'other' && this.otherText.trim()) {
-              return this.otherText.trim();
+            if (choice === 'comment' && this.commentText.trim()) {
+              return this.commentText.trim();
             }
             return choice;
-          }).filter(choice => choice !== 'other' || this.otherText.trim());
+          }).filter(choice => choice !== 'comment' || this.commentText.trim());
           
           content = selections.join(', ');
         }
@@ -381,37 +367,43 @@
           
           // Enviar al WebSocket
           if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-            // Calcular tiempo de sesión
-            const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
+            const messageWithMetrics = this.createMessageWithMetrics(content);
             
-            // Crear objeto con contenido y métricas
-            const selectionWithMetrics = {
-              content,
-              metrics: {
-                mouseOutsideCount: this.userMetrics.mouseOutsideCount,
-                mouseInsideCount: this.userMetrics.mouseInsideCount,
-                appHiddenCount: this.userMetrics.appHiddenCount,
-                appVisibleCount: this.userMetrics.appVisibleCount,
-                sessionDurationMs: sessionDuration,
-                sessionDurationSeconds: Math.round(sessionDuration / 1000)
-              }
-            };
-            
-            this.ws.send(JSON.stringify(selectionWithMetrics));
+            this.ws.send(JSON.stringify(messageWithMetrics));
             this.$emit('message-sent', content);
             
-            console.log('📊 Métricas enviadas con selección:', selectionWithMetrics.metrics);
+            console.log('📊 Métricas enviadas:', messageWithMetrics.metrics);
           }
           
           // Limpiar estado
           this.selectedSingleChoice = null;
           this.selectedMultipleChoices = [];
-          this.otherText = '';
+          this.commentText = '';
           this.currentAnswerType = null;
           this.currentOptions = [];
         }
       },
 
+      // Helper para generar métricas del usuario
+      generateUserMetrics() {
+        const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
+        return {
+          mouseOutsideCount: this.userMetrics.mouseOutsideCount,
+          mouseInsideCount: this.userMetrics.mouseInsideCount,
+          appHiddenCount: this.userMetrics.appHiddenCount,
+          appVisibleCount: this.userMetrics.appVisibleCount,
+          sessionDurationMs: sessionDuration,
+          sessionDurationSeconds: Math.round(sessionDuration / 1000)
+        };
+      },
+      
+      // Helper para crear mensaje con métricas
+      createMessageWithMetrics(content) {
+        return {
+          content,
+          metrics: this.generateUserMetrics()
+        };
+      },
 
       setupFocusDetection() {
         // Detectar la posición del mouse en tiempo real
@@ -674,7 +666,7 @@
     transform: none;
   }
   
-  .other-input-container {
+  .comment-input-container {
     margin-top: 10px;
     padding: 10px;
     border: 1px solid #e2e8f0;
@@ -682,7 +674,7 @@
     background: #f8f9fa;
   }
   
-  .other-textarea {
+  .comment-textarea {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid #e2e8f0;
@@ -693,7 +685,7 @@
     transition: border-color 0.2s ease;
   }
   
-  .other-textarea:focus {
+  .comment-textarea:focus {
     outline: none;
     border-color: #4a5568;
   }
