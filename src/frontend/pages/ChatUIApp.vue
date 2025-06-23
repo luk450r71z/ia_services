@@ -9,7 +9,7 @@
           </div>
           
           <!-- Avatar independent from ChatWidget -->
-          <div v-if="showAvatar" class="header-avatar">
+          <div v-if="avatarConfig.show" class="header-avatar">
             <Avatar 
               :name="avatarConfig.name"
               :src="avatarConfig.url"
@@ -70,7 +70,6 @@ const chatSession = reactive({
 const connectionState = ref('connecting')
 
 // Avatar configuration
-const showAvatar = ref(false)
 const avatarConfig = ref({
   show: false,
   url: null,
@@ -84,19 +83,16 @@ const handleUIConfigMessage = (data) => {
     const avatarData = data.data.avatar
     
     if (typeof avatarData === 'boolean') {
-      showAvatar.value = avatarData
       avatarConfig.value.show = avatarData
-      console.log('👤 Avatar:', showAvatar.value ? 'enabled' : 'disabled')
+      console.log('👤 Avatar:', avatarData ? 'enabled' : 'disabled')
     } else if (typeof avatarData === 'object' && avatarData !== null) {
-      showAvatar.value = Boolean(avatarData.show)
       avatarConfig.value = {
-        show: showAvatar.value,
+        show: Boolean(avatarData.show),
         url: avatarData.url || avatarData.image || null,
         name: avatarData.name || 'AI Assistant'
       }
       console.log('👤 Avatar configured:', avatarConfig.value)
     } else {
-      showAvatar.value = false
       avatarConfig.value.show = false
       console.log('👤 Avatar disabled')
     }

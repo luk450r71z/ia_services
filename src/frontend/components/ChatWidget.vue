@@ -81,7 +81,7 @@
             :disabled="!hasValidSelection"
             class="send-selection-button"
           >
-            Send Selection ({{ selectionCount }})
+            Send Selection ({{ selectedMultipleChoices.length }})
           </button>
         </div>
       </div>
@@ -133,7 +133,15 @@
         currentOptions: [],
         selectedSingleChoice: null,
         selectedMultipleChoices: [],
-        otherText: ''
+        otherText: '',
+        // Métricas de comportamiento del usuario
+        userMetrics: {
+          mouseOutsideCount: 0,
+          mouseInsideCount: 0,
+          appHiddenCount: 0,
+          appVisibleCount: 0,
+          sessionStartTime: Date.now()
+        }
       }
     },
     computed: {
@@ -166,9 +174,6 @@
           return hasValidChoices;
         }
         return false;
-      },
-      selectionCount() {
-        return this.selectedMultipleChoices.length;
       }
     },
     mounted() {
@@ -179,6 +184,9 @@
         console.error('❌ No WebSocket URL provided');
         this.$emit('connection-state-change', 'error');
       }
+      
+      // Configurar listener global para detectar pérdida de foco en todo el componente
+      this.setupFocusDetection();
     },
     beforeUnmount() {
       this.disconnectWebSocket();
@@ -243,7 +251,6 @@
         
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
-          const isWelcome = data.data?.is_welcome;
           const isCurrentState = data.data?.is_current_state;
           const answerType = data.data?.answerType;
           const options = data.data?.options;
@@ -303,8 +310,26 @@
         this.addMessage('user', message);
         
         if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ content: message }));
+          // Calcular tiempo de sesión
+          const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
+          
+          // Crear objeto con mensaje y métricas
+          const messageWithMetrics = {
+            content: message,
+            metrics: {
+              mouseOutsideCount: this.userMetrics.mouseOutsideCount,
+              mouseInsideCount: this.userMetrics.mouseInsideCount,
+              appHiddenCount: this.userMetrics.appHiddenCount,
+              appVisibleCount: this.userMetrics.appVisibleCount,
+              sessionDurationMs: sessionDuration,
+              sessionDurationSeconds: Math.round(sessionDuration / 1000)
+            }
+          };
+          
+          this.ws.send(JSON.stringify(messageWithMetrics));
           this.$emit('message-sent', message);
+          
+          console.log('📊 Métricas enviadas:', messageWithMetrics.metrics);
         } else {
           this.addMessage('system', 'No connection available');
         }
@@ -315,8 +340,7 @@
       addMessage(role, content) {
         this.messages.push({
           role,
-          content,
-          timestamp: new Date()
+          content
         });
         
         this.$nextTick(() => {
@@ -357,8 +381,26 @@
           
           // Enviar al WebSocket
           if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ content }));
+            // Calcular tiempo de sesión
+            const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
+            
+            // Crear objeto con contenido y métricas
+            const selectionWithMetrics = {
+              content,
+              metrics: {
+                mouseOutsideCount: this.userMetrics.mouseOutsideCount,
+                mouseInsideCount: this.userMetrics.mouseInsideCount,
+                appHiddenCount: this.userMetrics.appHiddenCount,
+                appVisibleCount: this.userMetrics.appVisibleCount,
+                sessionDurationMs: sessionDuration,
+                sessionDurationSeconds: Math.round(sessionDuration / 1000)
+              }
+            };
+            
+            this.ws.send(JSON.stringify(selectionWithMetrics));
             this.$emit('message-sent', content);
+            
+            console.log('📊 Métricas enviadas con selección:', selectionWithMetrics.metrics);
           }
           
           // Limpiar estado
@@ -368,6 +410,44 @@
           this.currentAnswerType = null;
           this.currentOptions = [];
         }
+      },
+
+
+      setupFocusDetection() {
+        // Detectar la posición del mouse en tiempo real
+        document.addEventListener('mousemove', (event) => {
+          const chatContainer = this.$el;
+          if (chatContainer && !chatContainer.contains(event.target)) {
+            console.log('🔗 ChatWidget mouse outside:');
+            this.userMetrics.mouseOutsideCount++;
+            this.$emit('mouse-outside', {
+              x: event.clientX,
+              y: event.clientY,
+              target: event.target.tagName
+            });
+          } else if (chatContainer && chatContainer.contains(event.target)) {
+            console.log('🔗 ChatWidget mouse inside:');
+            this.userMetrics.mouseInsideCount++;
+            this.$emit('mouse-inside', {
+              x: event.clientX,
+              y: event.clientY,
+              target: event.target.tagName
+            });
+          }
+        });
+        
+        // Detectar cambios de pestaña y minimización
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            console.log('🔒 ChatWidget app hidden');
+            this.userMetrics.appHiddenCount++;
+            this.$emit('app-hidden');
+          } else {
+            console.log('🔗 ChatWidget app visible');
+            this.userMetrics.appVisibleCount++;
+            this.$emit('app-visible');
+          }
+        });
       }
     }
   }
