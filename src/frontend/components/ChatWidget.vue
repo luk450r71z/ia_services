@@ -54,6 +54,27 @@
               >
               <span class="checkbox-text">{{ option }}</span>
             </label>
+            
+            <!-- Opción "Other" con campo de texto -->
+            <label class="checkbox-label">
+              <input 
+                type="checkbox" 
+                value="other"
+                v-model="selectedMultipleChoices"
+                class="checkbox-input"
+              >
+              <span class="checkbox-text">Other:</span>
+            </label>
+            
+            <!-- Campo de texto para "Other" -->
+            <div v-if="selectedMultipleChoices.includes('other')" class="other-input-container">
+              <textarea 
+                v-model="otherText"
+                placeholder="Please specify..."
+                class="other-textarea"
+                rows="2"
+              ></textarea>
+            </div>
           </div>
           <button 
             @click="sendSelection"
@@ -111,7 +132,8 @@
         currentAnswerType: null,
         currentOptions: [],
         selectedSingleChoice: null,
-        selectedMultipleChoices: []
+        selectedMultipleChoices: [],
+        otherText: ''
       }
     },
     computed: {
@@ -134,7 +156,14 @@
           return !!this.selectedSingleChoice;
         }
         if (this.currentAnswerType === 'multiple_choice') {
-          return this.selectedMultipleChoices.length > 0;
+          // Verificar que haya al menos una selección válida
+          const hasValidChoices = this.selectedMultipleChoices.some(choice => {
+            if (choice === 'other') {
+              return this.otherText.trim().length > 0;
+            }
+            return true;
+          });
+          return hasValidChoices;
         }
         return false;
       },
@@ -231,6 +260,7 @@
           // Limpiar selecciones anteriores
           this.selectedSingleChoice = null;
           this.selectedMultipleChoices = [];
+          this.otherText = '';
           
           if (isComplete) {
             console.log('🔒 Conversation completed in chat-ui');
@@ -311,7 +341,15 @@
         if (this.currentAnswerType === 'single_choice' && this.selectedSingleChoice) {
           content = this.selectedSingleChoice;
         } else if (this.currentAnswerType === 'multiple_choice' && this.selectedMultipleChoices.length > 0) {
-          content = this.selectedMultipleChoices.join(', ');
+          // Procesar las opciones seleccionadas, incluyendo "other"
+          const selections = this.selectedMultipleChoices.map(choice => {
+            if (choice === 'other' && this.otherText.trim()) {
+              return this.otherText.trim();
+            }
+            return choice;
+          }).filter(choice => choice !== 'other' || this.otherText.trim());
+          
+          content = selections.join(', ');
         }
         
         if (content) {
@@ -326,6 +364,7 @@
           // Limpiar estado
           this.selectedSingleChoice = null;
           this.selectedMultipleChoices = [];
+          this.otherText = '';
           this.currentAnswerType = null;
           this.currentOptions = [];
         }
@@ -553,5 +592,29 @@
     background: #a0aec0;
     cursor: not-allowed;
     transform: none;
+  }
+  
+  .other-input-container {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8f9fa;
+  }
+  
+  .other-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    resize: none;
+    font-family: inherit;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+  }
+  
+  .other-textarea:focus {
+    outline: none;
+    border-color: #4a5568;
   }
   </style> 
