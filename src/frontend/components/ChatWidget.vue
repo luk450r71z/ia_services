@@ -193,21 +193,19 @@
             console.log('🔌 WebSocket disconnected, code:', event.code);
             this.connectionState = 'disconnected';
             this.$emit('connection-state-change', 'disconnected');
-            this.addMessage('system', 'Connection closed');
+            this.addMessage('system', 'This chat session has ended.');
           };
           
           this.ws.onerror = (error) => {
             console.error('❌ WebSocket error:', error);
             this.connectionState = 'disconnected';
             this.$emit('connection-state-change', 'disconnected');
-            this.addMessage('system', 'Connection error');
           };
           
         } catch (error) {
-          console.error('❌ Error connecting to WebSocket:', error);
           this.connectionState = 'disconnected';
           this.$emit('connection-state-change', 'error');
-          this.addMessage('system', `Connection error: ${error.message}`);
+          this.addMessage('system', 'Connection error');
         }
       },
       

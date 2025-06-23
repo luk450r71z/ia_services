@@ -390,5 +390,56 @@ def get_session_logs(id_session: str) -> list:
         if conn:
             conn.close()
 
+def get_all_sessions_db():
+    """Get all sessions from SQLite database"""
+    logger.info("Obteniendo todas las sesiones de la base de datos")
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM sessions ORDER BY created_at DESC")
+        sessions = cursor.fetchall()
+
+        if sessions:
+            # Convertir timestamps a datetime para cada sesión
+            for session in sessions:
+                session['created_at'] = datetime.strptime(session['created_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                session['updated_at'] = datetime.strptime(session['updated_at'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                # Convertir content y configs de JSON string a dict
+                try:
+                    if session['content'] and session['content'] != '{}':
+                        session['content'] = json.loads(session['content'])
+                    else:
+                        session['content'] = None
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Error parseando content JSON para sesión {session['id_session']}: {e}")
+                    session['content'] = None
+                    
+                try:
+                    if session['configs'] and session['configs'] != '{}':
+                        session['configs'] = json.loads(session['configs'])
+                    else:
+                        session['configs'] = None
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Error parseando configs JSON para sesión {session['id_session']}: {e}")
+                    session['configs'] = None
+            
+            logger.info(f"Se encontraron {len(sessions)} sesiones")
+        else:
+            logger.info("No se encontraron sesiones en la base de datos")
+
+        return sessions
+
+    except sqlite3.Error as e:
+        logger.error(f"Error de base de datos al obtener todas las sesiones: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado al obtener todas las sesiones: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
+
 # Initialize database when module is imported
 init_db() 

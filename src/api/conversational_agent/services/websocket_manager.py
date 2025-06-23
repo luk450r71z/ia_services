@@ -80,7 +80,7 @@ class WebSocketManager:
             
         except Exception as e:
             logger.error(f"❌ Error procesando mensaje de usuario en sesión {id_session}: {str(e)}")
-            await self.send_message(id_session, "error", f"Error interno: {str(e)}")
+            await self.send_message(id_session, "error", f"{str(e)}")
 
     async def connect_and_initialize(self, websocket: WebSocket, id_session: str, session_data: Dict[str, Any] = None):
         """Conecta WebSocket, envía configuración UI e inicializa agente con mensaje de bienvenida"""
@@ -177,7 +177,7 @@ class WebSocketManager:
                         await self.send_message(
                             id_session, 
                             "error", 
-                            "Formato inválido. Usa: {\"content\": \"tu mensaje\"}"
+                            "Invalid format. Use: {\"content\": \"message\"}"
                         )
                         
                 except WebSocketDisconnect:
@@ -188,7 +188,7 @@ class WebSocketManager:
                     await self.send_message(
                         id_session, 
                         "error", 
-                        f"Error procesando mensaje: {str(e)}"
+                        f"{str(e)}"
                     )
                     
         except Exception as e:

@@ -1,17 +1,29 @@
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from auth.router import auth_router
 from conversational_agent.router import chat_router
+from conversational_agent.services.cleanup_service import cleanup_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager para manejar startup y shutdown"""
+    # Startup
+    await cleanup_service.start()
+    yield
+    # Shutdown
+    await cleanup_service.stop()
+
 app = FastAPI(
     title="IA Services API",
     description="API for authentication and conversational agent services",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Configure CORS

@@ -61,6 +61,11 @@ class ConversationManager:
     async def process_user_message(self, id_session: str, message: str) -> Dict[str, Any]:
         """Processes a user message and handles all conversational logic"""
         try:
+            # Validate that the session has not expired
+            session_data = SessionService.validate_and_start_session(id_session)
+            if not session_data:
+                raise ValueError("Session has expired.")
+            
             # Log user message
             await log_service.log_message(
                 id_session=id_session,

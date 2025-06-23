@@ -25,9 +25,6 @@
     
     <!-- Sección de Chat Widget -->
     <div v-if="chatSession.isActive" class="section">
-      <div class="success-message">
-        ✅ Sesión iniciada correctamente
-      </div>
       <ChatWidget 
         :websocket_url="chatSession.websocketUrl"
         @conversation-complete="onConversationComplete"
@@ -211,15 +208,6 @@ const onCloseWidget = () => {
   border-radius: 4px;
   padding: 12px;
   margin-top: 1rem;
-}
-
-.success-message {
-  color: #155724;
-  background-color: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 4px;
-  padding: 12px;
-  margin-bottom: 1rem;
 }
 
 .completion-message {
