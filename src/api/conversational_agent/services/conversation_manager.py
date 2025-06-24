@@ -1,9 +1,10 @@
 import logging
+import asyncio
 from typing import Dict, Any, Optional
 
 from .session_service import SessionService
 from .log_service import log_service
-from .notification_service import notification_service
+from .notification_service import get_notification_service
 from ..models.log_models import LogStatus
 from ..models.agent_protocol import ConversationalAgent
 from auth.db.sqlite_db import get_session_db
@@ -175,7 +176,7 @@ class ConversationManager:
                     logger.info(f"📧 Found {len(emails)} email recipients in config")
                     # Send notifications
                     try:
-                        notification_results = await notification_service.send_completion_notifications(
+                        notification_results = await get_notification_service().send_completion_notifications(
                             id_session=id_session,
                             emails=emails,
                             conversation_summary=conversation_summary
