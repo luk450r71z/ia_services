@@ -272,45 +272,6 @@ def update_session_db(id_session: str, type_value: str, status: str, content: di
         if conn:
             conn.close()
 
-def save_message_log(log_data: dict):
-    """Guarda un log de mensaje en la base de datos"""
-    conn = None
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-
-        # Convertir metadata y webhook_response a JSON
-        metadata_json = json.dumps(log_data.get('metadata', {}), ensure_ascii=False)
-        webhook_response_json = json.dumps(log_data.get('webhook_response', {}), ensure_ascii=False)
-
-        cursor.execute("""
-        INSERT INTO message_logs (
-            id_session, message_type, content, timestamp, status,
-            attempt_number, metadata, webhook_sent, webhook_response
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            log_data['id_session'],
-            log_data['message_type'],
-            log_data['content'],
-            log_data['timestamp'],
-            log_data['status'],
-            log_data['attempt_number'],
-            metadata_json,
-            log_data['webhook_sent'],
-            webhook_response_json
-        ))
-
-        conn.commit()
-        return cursor.lastrowid
-    except Exception as e:
-        logger.error(f"Error guardando log de mensaje: {e}")
-        if conn:
-            conn.rollback()
-        raise
-    finally:
-        if conn:
-            conn.close()
-
 def update_session_logs(id_session: str, log_data: dict):
     """Actualiza los logs de una sesión"""
     conn = None
@@ -332,8 +293,8 @@ def update_session_logs(id_session: str, log_data: dict):
             logger.error(f"Error decodificando logs JSON para sesión {id_session}: {e}")
             current_logs = []
         
-        # Si el último log tiene el mismo contenido y tipo, actualizarlo
-        if current_logs and current_logs[-1].get('content') == log_data.get('content') and current_logs[-1].get('message_type') == log_data.get('message_type'):
+        # Si el último log tiene el mismo mensaje, actualizarlo
+        if current_logs and current_logs[-1].get('message') == log_data.get('message'):
             current_logs[-1] = log_data
         else:
             # Si es un log diferente, agregarlo
