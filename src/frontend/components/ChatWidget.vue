@@ -54,13 +54,34 @@
               >
               <span class="checkbox-text">{{ option }}</span>
             </label>
+            
+            <!-- Opción "Comment" con campo de texto -->
+            <label class="checkbox-label">
+              <input 
+                type="checkbox" 
+                value="comment"
+                v-model="selectedMultipleChoices"
+                class="checkbox-input"
+              >
+              <span class="checkbox-text">Comment:</span>
+            </label>
+            
+            <!-- Campo de texto para "Comment" -->
+            <div v-if="selectedMultipleChoices.includes('comment')" class="comment-input-container">
+              <textarea 
+                v-model="commentText"
+                placeholder="Please specify..."
+                class="comment-textarea"
+                rows="2"
+              ></textarea>
+            </div>
           </div>
           <button 
             @click="sendSelection"
             :disabled="!hasValidSelection"
             class="send-selection-button"
           >
-            Send Selection ({{ selectionCount }})
+            Send Selection ({{ selectedMultipleChoices.length }})
           </button>
         </div>
       </div>
@@ -111,7 +132,20 @@
         currentAnswerType: null,
         currentOptions: [],
         selectedSingleChoice: null,
-        selectedMultipleChoices: []
+        selectedMultipleChoices: [],
+        commentText: '',
+        // Métricas de comportamiento del usuario
+        userMetrics: {
+          appHiddenTime: 0,           // Tiempo total con app oculta (ms)
+          appVisibleTime: 0,          // Tiempo total con app visible (ms)
+          sessionStartTime: Date.now(),
+          // Contadores de operaciones
+          copyCount: 0,               // Número de veces que copió (Ctrl+C)
+          pasteCount: 0,              // Número de veces que pegó (Ctrl+V)
+          // Timers para tracking de tiempo
+          appHiddenStartTime: null,
+          appVisibleStartTime: Date.now() // Inicializar como visible
+        }
       }
     },
     computed: {
@@ -134,12 +168,16 @@
           return !!this.selectedSingleChoice;
         }
         if (this.currentAnswerType === 'multiple_choice') {
-          return this.selectedMultipleChoices.length > 0;
+          // Verificar que haya al menos una selección válida
+          const hasValidChoices = this.selectedMultipleChoices.some(choice => {
+            if (choice === 'comment' && this.commentText.trim().length > 0) {
+              return true;
+            }
+            return true;
+          });
+          return hasValidChoices;
         }
         return false;
-      },
-      selectionCount() {
-        return this.selectedMultipleChoices.length;
       }
     },
     mounted() {
@@ -150,6 +188,9 @@
         console.error('❌ No WebSocket URL provided');
         this.$emit('connection-state-change', 'error');
       }
+      
+      // Configurar listener global para detectar pérdida de foco en todo el componente
+      this.setupFocusDetection();
     },
     beforeUnmount() {
       this.disconnectWebSocket();
@@ -193,21 +234,19 @@
             console.log('🔌 WebSocket disconnected, code:', event.code);
             this.connectionState = 'disconnected';
             this.$emit('connection-state-change', 'disconnected');
-            this.addMessage('system', 'Connection closed');
+            this.addMessage('system', 'This chat session has ended.');
           };
           
           this.ws.onerror = (error) => {
             console.error('❌ WebSocket error:', error);
             this.connectionState = 'disconnected';
             this.$emit('connection-state-change', 'disconnected');
-            this.addMessage('system', 'Connection error');
           };
           
         } catch (error) {
-          console.error('❌ Error connecting to WebSocket:', error);
           this.connectionState = 'disconnected';
           this.$emit('connection-state-change', 'error');
-          this.addMessage('system', `Connection error: ${error.message}`);
+          this.addMessage('system', 'Connection error');
         }
       },
       
@@ -216,7 +255,6 @@
         
         if (data.type === 'agent_response') {
           const isComplete = data.data?.is_complete;
-          const isWelcome = data.data?.is_welcome;
           const isCurrentState = data.data?.is_current_state;
           const answerType = data.data?.answerType;
           const options = data.data?.options;
@@ -233,6 +271,7 @@
           // Limpiar selecciones anteriores
           this.selectedSingleChoice = null;
           this.selectedMultipleChoices = [];
+          this.commentText = '';
           
           if (isComplete) {
             console.log('🔒 Conversation completed in chat-ui');
@@ -275,8 +314,7 @@
         this.addMessage('user', message);
         
         if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ content: message }));
-          this.$emit('message-sent', message);
+          this.sendMessageWithMetrics(message);
         } else {
           this.addMessage('system', 'No connection available');
         }
@@ -287,8 +325,7 @@
       addMessage(role, content) {
         this.messages.push({
           role,
-          content,
-          timestamp: new Date()
+          content
         });
         
         this.$nextTick(() => {
@@ -313,7 +350,15 @@
         if (this.currentAnswerType === 'single_choice' && this.selectedSingleChoice) {
           content = this.selectedSingleChoice;
         } else if (this.currentAnswerType === 'multiple_choice' && this.selectedMultipleChoices.length > 0) {
-          content = this.selectedMultipleChoices.join(', ');
+          // Procesar las opciones seleccionadas, incluyendo "comment"
+          const selections = this.selectedMultipleChoices.map(choice => {
+            if (choice === 'comment' && this.commentText.trim()) {
+              return this.commentText.trim();
+            }
+            return choice;
+          }).filter(choice => choice !== 'comment' || this.commentText.trim());
+          
+          content = selections.join(', ');
         }
         
         if (content) {
@@ -321,16 +366,116 @@
           
           // Enviar al WebSocket
           if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ content }));
-            this.$emit('message-sent', content);
+            this.sendMessageWithMetrics(content);
           }
           
           // Limpiar estado
           this.selectedSingleChoice = null;
           this.selectedMultipleChoices = [];
+          this.commentText = '';
           this.currentAnswerType = null;
           this.currentOptions = [];
         }
+      },
+
+      // Helper para resetear métricas del usuario
+      resetUserMetrics() {
+        this.userMetrics.appHiddenTime = 0;
+        this.userMetrics.appVisibleTime = 0;
+        this.userMetrics.copyCount = 0;
+        this.userMetrics.pasteCount = 0;
+        this.userMetrics.sessionStartTime = Date.now();
+        this.userMetrics.appVisibleStartTime = Date.now();
+        this.userMetrics.appHiddenStartTime = null;
+      },
+      
+      // Helper para generar métricas del usuario
+      generateUserMetrics() {
+        const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
+        
+        // Calcular tiempo actual si hay timers activos
+        let currentAppVisibleTime = this.userMetrics.appVisibleTime;
+        let currentAppHiddenTime = this.userMetrics.appHiddenTime;
+        
+        if (this.userMetrics.appVisibleStartTime) {
+          currentAppVisibleTime += Date.now() - this.userMetrics.appVisibleStartTime;
+        }
+        if (this.userMetrics.appHiddenStartTime) {
+          currentAppHiddenTime += Date.now() - this.userMetrics.appHiddenStartTime;
+        }
+        
+        return {
+          appHiddenTime: currentAppHiddenTime,
+          appVisibleTime: currentAppVisibleTime,
+          sessionDuration: sessionDuration,
+          copyCount: this.userMetrics.copyCount,
+          pasteCount: this.userMetrics.pasteCount
+        };
+      },
+      
+      // Helper para crear mensaje con métricas
+      createMessageWithMetrics(content) {
+        return {
+          content,
+          metrics: this.generateUserMetrics()
+        };
+      },
+
+      setupFocusDetection() {
+        // Detectar operaciones de copiar y pegar
+        document.addEventListener('copy', (event) => {
+          this.userMetrics.copyCount++;
+          console.log('📋 Copy detected');
+          this.$emit('copy-operation');
+        });
+        
+        document.addEventListener('paste', (event) => {
+          this.userMetrics.pasteCount++;
+          console.log('📋 Paste detected');
+          this.$emit('paste-operation');
+        });
+        
+        // Detectar cambios de pestaña y minimización
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            // Si estaba visible y ahora está oculta, calcular tiempo visible
+            if (this.userMetrics.appVisibleStartTime) {
+              this.userMetrics.appVisibleTime += Date.now() - this.userMetrics.appVisibleStartTime;
+              this.userMetrics.appVisibleStartTime = null;
+            }
+            
+            // Empezar a trackear tiempo oculta
+            this.userMetrics.appHiddenStartTime = Date.now();
+            
+            console.log('🔒 ChatWidget app hidden');
+            this.$emit('app-hidden');
+          } else {
+            // Si estaba oculta y ahora está visible, calcular tiempo oculta
+            if (this.userMetrics.appHiddenStartTime) {
+              this.userMetrics.appHiddenTime += Date.now() - this.userMetrics.appHiddenStartTime;
+              this.userMetrics.appHiddenStartTime = null;
+            }
+            
+            // Empezar a trackear tiempo visible
+            this.userMetrics.appVisibleStartTime = Date.now();
+            
+            console.log('🔗 ChatWidget app visible');
+            this.$emit('app-visible');
+          }
+        });
+      },
+
+      // Helper para enviar mensaje con métricas
+      sendMessageWithMetrics(content) {
+        const messageWithMetrics = this.createMessageWithMetrics(content);
+        
+        this.ws.send(JSON.stringify(messageWithMetrics));
+        this.$emit('message-sent', content);
+        
+        console.log('📊 Métricas enviadas:', messageWithMetrics.metrics);
+        
+        // Resetear métricas después de enviar
+        this.resetUserMetrics();
       }
     }
   }
@@ -360,6 +505,7 @@
     padding: 12px 16px;
     border-radius: 12px;
     max-width: 85%;
+    width: fit-content;
     word-wrap: break-word;
   }
   
@@ -367,12 +513,16 @@
     background: #718096;
     color: white;
     margin-left: auto;
+    text-align: right;
+    min-width: 60px;
   }
   
   .message.agent {
     background: #e2e8f0;
     color: #2d3748;
     margin-right: auto;
+    text-align: left;
+    min-width: 60px;
   }
   
   .message.system {
@@ -380,6 +530,7 @@
     color: white;
     margin: 10px auto;
     text-align: center;
+    min-width: 200px;
     max-width: 95%;
   }
   
@@ -549,5 +700,29 @@
     background: #a0aec0;
     cursor: not-allowed;
     transform: none;
+  }
+  
+  .comment-input-container {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8f9fa;
+  }
+  
+  .comment-textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    resize: none;
+    font-family: inherit;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+  }
+  
+  .comment-textarea:focus {
+    outline: none;
+    border-color: #4a5568;
   }
   </style> 

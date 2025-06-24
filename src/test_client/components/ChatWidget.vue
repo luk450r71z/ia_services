@@ -54,6 +54,27 @@
             >
             <span class="checkbox-text">{{ option }}</span>
           </label>
+          
+          <!-- Opción "Other" con campo de texto -->
+          <label class="checkbox-label">
+            <input 
+              type="checkbox" 
+              value="other"
+              v-model="selectedMultipleChoices"
+              class="checkbox-input"
+            >
+            <span class="checkbox-text">Other:</span>
+          </label>
+          
+          <!-- Campo de texto para "Other" -->
+          <div v-if="selectedMultipleChoices.includes('other')" class="other-input-container">
+            <textarea 
+              v-model="otherText"
+              placeholder="Please specify..."
+              class="other-textarea"
+              rows="2"
+            ></textarea>
+          </div>
         </div>
         <button 
           @click="sendSelection"
@@ -111,7 +132,8 @@ export default {
       currentAnswerType: null,
       currentOptions: [],
       selectedSingleChoice: null,
-      selectedMultipleChoices: []
+      selectedMultipleChoices: [],
+      otherText: ''
     }
   },
   computed: {
@@ -134,7 +156,14 @@ export default {
         return !!this.selectedSingleChoice;
       }
       if (this.currentAnswerType === 'multiple_choice') {
-        return this.selectedMultipleChoices.length > 0;
+        // Verificar que haya al menos una selección válida
+        const hasValidChoices = this.selectedMultipleChoices.some(choice => {
+          if (choice === 'other') {
+            return this.otherText.trim().length > 0;
+          }
+          return true;
+        });
+        return hasValidChoices;
       }
       return false;
     },
@@ -193,21 +222,19 @@ export default {
           console.log('🔌 WebSocket disconnected, code:', event.code);
           this.connectionState = 'disconnected';
           this.$emit('connection-state-change', 'disconnected');
-          this.addMessage('system', 'Connection closed');
+          this.addMessage('system', 'This chat session has ended.');
         };
         
         this.ws.onerror = (error) => {
           console.error('❌ WebSocket error:', error);
           this.connectionState = 'disconnected';
           this.$emit('connection-state-change', 'disconnected');
-          this.addMessage('system', 'Connection error');
         };
         
       } catch (error) {
-        console.error('❌ Error connecting to WebSocket:', error);
         this.connectionState = 'disconnected';
         this.$emit('connection-state-change', 'error');
-        this.addMessage('system', `Connection error: ${error.message}`);
+        this.addMessage('system', 'Connection error');
       }
     },
     
@@ -233,6 +260,7 @@ export default {
         // Limpiar selecciones anteriores
         this.selectedSingleChoice = null;
         this.selectedMultipleChoices = [];
+        this.otherText = '';
         
         if (isComplete) {
           console.log('🔒 Conversation completed in chat-ui');
@@ -313,7 +341,15 @@ export default {
       if (this.currentAnswerType === 'single_choice' && this.selectedSingleChoice) {
         content = this.selectedSingleChoice;
       } else if (this.currentAnswerType === 'multiple_choice' && this.selectedMultipleChoices.length > 0) {
-        content = this.selectedMultipleChoices.join(', ');
+        // Procesar las opciones seleccionadas, incluyendo "other"
+        const selections = this.selectedMultipleChoices.map(choice => {
+          if (choice === 'other' && this.otherText.trim()) {
+            return this.otherText.trim();
+          }
+          return choice;
+        }).filter(choice => choice !== 'other' || this.otherText.trim());
+        
+        content = selections.join(', ');
       }
       
       if (content) {
@@ -328,6 +364,7 @@ export default {
         // Limpiar estado
         this.selectedSingleChoice = null;
         this.selectedMultipleChoices = [];
+        this.otherText = '';
         this.currentAnswerType = null;
         this.currentOptions = [];
       }
@@ -360,6 +397,7 @@ export default {
   padding: 12px 16px;
   border-radius: 12px;
   max-width: 85%;
+  width: fit-content;
   word-wrap: break-word;
 }
 
@@ -367,12 +405,16 @@ export default {
   background: #718096;
   color: white;
   margin-left: auto;
+  text-align: right;
+  min-width: 60px;
 }
 
 .message.agent {
   background: #e2e8f0;
   color: #2d3748;
   margin-right: auto;
+  text-align: left;
+  min-width: 60px;
 }
 
 .message.system {
@@ -380,6 +422,7 @@ export default {
   color: white;
   margin: 10px auto;
   text-align: center;
+  min-width: 200px;
   max-width: 95%;
 }
 
@@ -549,5 +592,29 @@ textarea:disabled {
   background: #a0aec0;
   cursor: not-allowed;
   transform: none;
+}
+
+.other-input-container {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8f9fa;
+}
+
+.other-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.other-textarea:focus {
+  outline: none;
+  border-color: #4a5568;
 }
 </style> 

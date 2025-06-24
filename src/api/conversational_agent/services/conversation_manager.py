@@ -1,9 +1,10 @@
 import logging
+import asyncio
 from typing import Dict, Any, Optional
 
 from .session_service import SessionService
 from .log_service import log_service
-from .notification_service import notification_service
+from .notification_service import get_notification_service
 from ..models.log_models import LogStatus
 from ..models.agent_protocol import ConversationalAgent
 from auth.db.sqlite_db import get_session_db
@@ -61,6 +62,11 @@ class ConversationManager:
     async def process_user_message(self, id_session: str, message: str) -> Dict[str, Any]:
         """Processes a user message and handles all conversational logic"""
         try:
+            # Validate that the session has not expired
+            session_data = SessionService.validate_and_start_session(id_session)
+            if not session_data:
+                raise ValueError("Session has expired.")
+            
             # Log user message
             await log_service.log_message(
                 id_session=id_session,
@@ -170,7 +176,7 @@ class ConversationManager:
                     logger.info(f"📧 Found {len(emails)} email recipients in config")
                     # Send notifications
                     try:
-                        notification_results = await notification_service.send_completion_notifications(
+                        notification_results = await get_notification_service().send_completion_notifications(
                             id_session=id_session,
                             emails=emails,
                             conversation_summary=conversation_summary

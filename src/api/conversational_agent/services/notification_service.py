@@ -160,5 +160,12 @@ class NotificationService:
         
         logger.info(f"📊 Emails enviados: {successful_sends}/{len(email_list)}")
 
-# Instancia global del servicio
-notification_service = NotificationService() 
+# Instancia global del servicio - NO inicializar automáticamente
+notification_service = None
+
+def get_notification_service():
+    """Obtiene la instancia del servicio de notificaciones (lazy initialization)"""
+    global notification_service
+    if notification_service is None:
+        notification_service = NotificationService()
+    return notification_service 
