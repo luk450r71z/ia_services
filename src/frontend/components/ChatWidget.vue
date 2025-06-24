@@ -314,12 +314,7 @@
         this.addMessage('user', message);
         
         if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-          const messageWithMetrics = this.createMessageWithMetrics(message);
-          
-          this.ws.send(JSON.stringify(messageWithMetrics));
-          this.$emit('message-sent', message);
-          
-          console.log('📊 Métricas enviadas:', messageWithMetrics.metrics);
+          this.sendMessageWithMetrics(message);
         } else {
           this.addMessage('system', 'No connection available');
         }
@@ -371,12 +366,7 @@
           
           // Enviar al WebSocket
           if (this.connectionState === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
-            const messageWithMetrics = this.createMessageWithMetrics(content);
-            
-            this.ws.send(JSON.stringify(messageWithMetrics));
-            this.$emit('message-sent', content);
-            
-            console.log('📊 Métricas enviadas:', messageWithMetrics.metrics);
+            this.sendMessageWithMetrics(content);
           }
           
           // Limpiar estado
@@ -388,6 +378,17 @@
         }
       },
 
+      // Helper para resetear métricas del usuario
+      resetUserMetrics() {
+        this.userMetrics.appHiddenTime = 0;
+        this.userMetrics.appVisibleTime = 0;
+        this.userMetrics.copyCount = 0;
+        this.userMetrics.pasteCount = 0;
+        this.userMetrics.sessionStartTime = Date.now();
+        this.userMetrics.appVisibleStartTime = Date.now();
+        this.userMetrics.appHiddenStartTime = null;
+      },
+      
       // Helper para generar métricas del usuario
       generateUserMetrics() {
         const sessionDuration = Date.now() - this.userMetrics.sessionStartTime;
@@ -421,52 +422,16 @@
       },
 
       setupFocusDetection() {
-        // Detectar la posición del mouse en toda la página
-        document.addEventListener('mousemove', (event) => {
-          // Obtener dimensiones de la ventana
-          const windowWidth = window.innerWidth;
-          const windowHeight = window.innerHeight;
-          
-          // Determinar si el mouse está dentro de la ventana
-          const isInsideWindow = event.clientX >= 0 && event.clientX <= windowWidth && 
-                                event.clientY >= 0 && event.clientY <= windowHeight;
-          
-          if (isInsideWindow) {
-            this.$emit('mouse-inside', {
-              x: event.clientX,
-              y: event.clientY,
-              target: event.target.tagName,
-              windowWidth,
-              windowHeight
-            });
-          }
-        });
-        
         // Detectar operaciones de copiar y pegar
-        document.addEventListener('keydown', (event) => {
-          if (event.ctrlKey || event.metaKey) { // Ctrl en Windows/Linux, Cmd en Mac
-            if (event.key === 'c') {
-              this.userMetrics.copyCount++;
-              console.log('📋 Copy detected (keyboard)');
-              this.$emit('copy-operation');
-            } else if (event.key === 'v') {
-              this.userMetrics.pasteCount++;
-              console.log('📋 Paste detected (keyboard)');
-              this.$emit('paste-operation');
-            }
-          }
-        });
-        
-        // Detectar operaciones de copiar y pegar mediante menú contextual
         document.addEventListener('copy', (event) => {
           this.userMetrics.copyCount++;
-          console.log('📋 Copy detected (context menu)');
+          console.log('📋 Copy detected');
           this.$emit('copy-operation');
         });
         
         document.addEventListener('paste', (event) => {
           this.userMetrics.pasteCount++;
-          console.log('📋 Paste detected (context menu)');
+          console.log('📋 Paste detected');
           this.$emit('paste-operation');
         });
         
@@ -498,6 +463,19 @@
             this.$emit('app-visible');
           }
         });
+      },
+
+      // Helper para enviar mensaje con métricas
+      sendMessageWithMetrics(content) {
+        const messageWithMetrics = this.createMessageWithMetrics(content);
+        
+        this.ws.send(JSON.stringify(messageWithMetrics));
+        this.$emit('message-sent', content);
+        
+        console.log('📊 Métricas enviadas:', messageWithMetrics.metrics);
+        
+        // Resetear métricas después de enviar
+        this.resetUserMetrics();
       }
     }
   }
