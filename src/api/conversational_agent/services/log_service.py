@@ -84,6 +84,11 @@ class LogService:
             # Convertir log a diccionario para el webhook
             webhook_data = json.loads(log.json())
             
+            # Incluir métricas del usuario si están disponibles
+            if log.metadata and log.metadata.get('user_metrics'):
+                webhook_data['user_metrics'] = log.metadata['user_metrics']
+                logger.info(f"📊 Incluyendo métricas del usuario en webhook: {log.metadata['user_metrics']}")
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     webhook_url,

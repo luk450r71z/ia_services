@@ -59,11 +59,11 @@ class WebSocketManager:
             logger.error(f"❌ Error sending message to {id_session}: {str(e)}")
             raise
     
-    async def handle_user_message(self, id_session: str, message: str):
+    async def handle_user_message(self, id_session: str, message: str, user_metrics: Dict[str, Any] = None):
         """Procesa un mensaje del usuario delegando a conversation_manager"""
         try:
             # Delegar procesamiento a conversation_manager
-            result = await conversation_manager.process_user_message(id_session, message)
+            result = await conversation_manager.process_user_message(id_session, message, user_metrics)
             
             # Enviar respuesta del agente
             await self.send_message(
@@ -165,12 +165,13 @@ class WebSocketManager:
                     try:
                         message_json = json.loads(message_data)
                         user_message = message_json.get('content', '').strip()
+                        user_metrics = message_json.get('metrics', {})  # Extraer métricas del usuario
                         
                         if not user_message:
                             logger.warning(f"⚠️ Mensaje sin contenido de sesión: {id_session}")
                             continue
                             
-                        await self.handle_user_message(id_session, user_message)
+                        await self.handle_user_message(id_session, user_message, user_metrics)
                         
                     except json.JSONDecodeError as e:
                         logger.error(f"❌ Error JSON de sesión {id_session}: {str(e)}")

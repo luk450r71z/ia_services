@@ -59,7 +59,7 @@ class ConversationManager:
             logger.error(f"❌ Error initializing conversation {id_session}: {str(e)}")
             return None
     
-    async def process_user_message(self, id_session: str, message: str) -> Dict[str, Any]:
+    async def process_user_message(self, id_session: str, message: str, user_metrics: Dict[str, Any] = None) -> Dict[str, Any]:
         """Processes a user message and handles all conversational logic"""
         try:
             # Validate that the session has not expired
@@ -67,12 +67,13 @@ class ConversationManager:
             if not session_data:
                 raise ValueError("Session has expired.")
             
-            # Log user message
+            # Log user message with metrics
             await log_service.log_message(
                 id_session=id_session,
                 message_type="user",
                 content=message,
-                status=LogStatus.ANSWERED
+                status=LogStatus.ANSWERED,
+                metadata={"user_metrics": user_metrics} if user_metrics else None
             )
             
             # Get agent
