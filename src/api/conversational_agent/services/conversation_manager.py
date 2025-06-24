@@ -5,7 +5,6 @@ from typing import Dict, Any, Optional
 from .session_service import SessionService
 from .log_service import log_service
 from .notification_service import get_notification_service
-from ..models.log_models import LogStatus
 from ..models.agent_protocol import ConversationalAgent
 from auth.db.sqlite_db import get_session_db
 
@@ -47,7 +46,6 @@ class ConversationManager:
                     id_session=id_session,
                     message_type="agent",
                     content=welcome_message,
-                    status=LogStatus.ANSWERED,
                     metadata={"is_welcome": True}
                 )
             except Exception as e:
@@ -59,7 +57,7 @@ class ConversationManager:
             logger.error(f"❌ Error initializing conversation {id_session}: {str(e)}")
             return None
     
-    async def process_user_message(self, id_session: str, message: str) -> Dict[str, Any]:
+    async def process_user_message(self, id_session: str, message: str, user_metrics: Dict[str, Any] = None) -> Dict[str, Any]:
         """Processes a user message and handles all conversational logic"""
         try:
             # Validate that the session has not expired
@@ -67,12 +65,12 @@ class ConversationManager:
             if not session_data:
                 raise ValueError("Session has expired.")
             
-            # Log user message
+            # Log user message with metrics
             await log_service.log_message(
                 id_session=id_session,
                 message_type="user",
                 content=message,
-                status=LogStatus.ANSWERED
+                metadata={"user_metrics": user_metrics} if user_metrics else None
             )
             
             # Get agent
@@ -103,7 +101,6 @@ class ConversationManager:
                 id_session=id_session,
                 message_type="agent",
                 content=agent_response,
-                status=LogStatus.ANSWERED,
                 metadata={"is_complete": is_complete}
             )
             
@@ -128,7 +125,6 @@ class ConversationManager:
                 id_session=id_session,
                 message_type="system",
                 content=f"Error: {str(e)}",
-                status=LogStatus.SKIPPED,
                 metadata={"error": str(e)}
             )
             raise

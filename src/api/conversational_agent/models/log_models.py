@@ -3,20 +3,16 @@ from enum import Enum
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
-class LogStatus(str, Enum):
+class LogStatus(str, Enum): #TODO
     """Estados posibles de un log de mensaje"""
     ANSWERED = "answered"
     RETRIED = "retried"
     SKIPPED = "skipped"
 
-class MessageLog(BaseModel):
-    """Modelo para los logs de mensajes"""
-    id_session: str = Field(..., min_length=1)
-    message_type: str  # "user" o "agent"
-    content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
-    status: LogStatus
-    attempt_number: int = 1
-    metadata: Optional[Dict[str, Any]] = None
-    webhook_sent: bool = False
-    webhook_response: Optional[Dict[str, Any]] = None 
+class WebhookLog(BaseModel):
+    """Modelo para el formato de webhook y base de datos"""
+    event: str = "onEvent"
+    datetime: str = Field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+    status: str = "Success"
+    message: str
+    data: Dict[str, Any] = Field(default_factory=dict) 
